@@ -1,9 +1,19 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
+from django.contrib.auth.models import User
 from .models import Project, AA_Sequence, DNA_Sequence
-from .serializers import ProjectSerializer, AA_SequenceSerializer, DNA_SequenceSerializer
+from .serializers import ProjectSerializer, AA_SequenceSerializer, DNA_SequenceSerializer, RegisterSerializer, UserSerializer, CustomTokenObtainPairSerializer
 import uuid
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = (permissions.AllowAny,)
+    serializer_class = RegisterSerializer
 
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()

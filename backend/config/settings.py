@@ -38,12 +38,14 @@ INSTALLED_APPS = [
     
     # Third party
     'rest_framework',
+    'rest_framework_simplejwt',
     'corsheaders',
     'django_celery_results',
     
     # Local apps (to be created)
     'core', 
     'analysis',
+    'projects',
 ]
 
 MIDDLEWARE = [
@@ -138,12 +140,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # DRF Settings
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny', # Change to IsAuthenticated in prod
+        'rest_framework.permissions.AllowAny', 
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # 'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
 # CORS Settings

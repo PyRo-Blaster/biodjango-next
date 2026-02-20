@@ -1,7 +1,8 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { Dna, Calculator, AlignJustify, Search, Home } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Dna, Calculator, AlignJustify, Search, Home, LogOut, User, Folder, ShieldCheck } from 'lucide-react';
 import clsx from 'clsx';
+import { useAuth } from '../context/AuthContext';
 
 const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
   const location = useLocation();
@@ -24,6 +25,14 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: 
 };
 
 export const Layout = ({ children }: { children: React.ReactNode }) => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+      logout();
+      navigate('/login');
+  };
+
   return (
     <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
@@ -37,14 +46,24 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
         
         <nav className="flex-1 p-4 space-y-1">
           <SidebarItem to="/" icon={Home} label="Dashboard" />
+          <SidebarItem to="/projects" icon={Folder} label="Projects" />
           <SidebarItem to="/sequence-analysis" icon={Dna} label="Sequence Analysis" />
           <SidebarItem to="/peptide-calc" icon={Calculator} label="Peptide Calculator" />
           <SidebarItem to="/blast" icon={Search} label="BLAST Search" />
           <SidebarItem to="/msa" icon={AlignJustify} label="MSA" />
+          
+          {user?.is_staff && (
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                  <span className="px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Admin</span>
+                  <div className="mt-2 space-y-1">
+                      <SidebarItem to="/admin-dashboard" icon={ShieldCheck} label="Approvals" />
+                  </div>
+              </div>
+          )}
         </nav>
 
         <div className="p-4 border-t border-slate-100 text-xs text-slate-400 text-center">
-            v2.0.0 (Beta)
+            v2.1.0 (RBAC)
         </div>
       </aside>
 
@@ -55,7 +74,28 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                 Bioinformatics Toolkit
             </h1>
             <div className="flex items-center gap-4">
-                {/* User profile or other actions could go here */}
+                {user ? (
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                            <User className="w-4 h-4" />
+                            <span>{user.username}</span>
+                        </div>
+                        <button 
+                            onClick={handleLogout}
+                            className="text-sm text-red-600 hover:text-red-700 flex items-center gap-1 px-3 py-1.5 rounded-md hover:bg-red-50 transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </button>
+                    </div>
+                ) : (
+                    <Link 
+                        to="/login"
+                        className="text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 transition-colors"
+                    >
+                        Login
+                    </Link>
+                )}
             </div>
         </header>
         <div className="p-8 max-w-7xl mx-auto">

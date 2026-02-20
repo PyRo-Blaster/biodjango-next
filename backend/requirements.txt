@@ -8,3 +8,4 @@ biopython>=1.80
 gunicorn>=21.2.0
 python-dotenv>=1.0.0
 django-celery-results>=2.5.0
+djangorestframework-simplejwt>=5.3.0

@@ -1,49 +1,37 @@
-# BioDjango Next
+# BioDjango Next Generation
 
-Refactored version of the BioDjango application with a modern architecture.
+BioDjango is a modern bioinformatics web platform built with Django REST Framework and React. It provides tools for sequence analysis, peptide calculations, BLAST searches, and multiple sequence alignment (MSA).
+
+## Features
+
+### 🔐 Project Management (New in v2.1)
+- **Role-Based Access Control (RBAC)**: Secure project access.
+- **Visitor Access**: Users can request access to private projects.
+- **Admin Workflow**: Administrators can approve or reject access requests.
+- **Bulk Upload**: Support for uploading FASTA files containing multiple sequences.
+
+### 🧬 Bioinformatics Tools
+- **Peptide Calculator**: Calculate molecular weight, pI, and net charge of peptide sequences.
+- **Sequence Analysis**: Analyze DNA/Protein sequences (GC content, melting temp, etc.).
+- **BLAST Search**: Run local BLASTP searches against custom databases (e.g., SwissProt, PDB).
+- **MSA Viewer**: Visualize ClustalW/MAFFT alignment results with conservation highlighting.
+
+## Tech Stack
+- **Backend**: Django, Django REST Framework, Celery, Redis, PostgreSQL.
+- **Frontend**: React, TypeScript, Tailwind CSS, Vite.
+- **Infrastructure**: Docker Compose, Nginx.
+
+## Quick Start
+
+### Development
+```bash
+docker-compose up -d --build
+```
+Access frontend at http://localhost:5173
+
+### Production
+See `DEPLOY.md` for detailed deployment instructions.
 
 ## Documentation
-- [Roadmap](docs/roadmap.md)
-- [System Architecture](docs/architecture.md)
-- [API Specification](docs/api_spec.md)
-
-## Project Structure
-- `backend/`: Django + DRF project.
-- `frontend/`: React + TypeScript + Vite project.
-- `docker-compose.yml`: Orchestration for Dev environment.
-
-## Getting Started
-
-### Prerequisites
-- Docker & Docker Compose
-- Node.js (for local frontend dev)
-- Python 3.11+ (for local backend dev)
-
-### Running with Docker (Recommended)
-
-```bash
-docker-compose up --build
-```
-
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs (Swagger): http://localhost:8000/api/schema/swagger-ui/ (To be configured)
-
-### Local Development
-
-**Backend:**
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+- `docs/iteration_plan_projects.md`: Technical specs for the Project Management module.
+- `DEPLOY.md`: Production deployment guide.
