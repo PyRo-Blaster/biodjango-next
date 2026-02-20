@@ -1,0 +1,73 @@
+services:
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=biodjango
+      - POSTGRES_USER=bioadmin
+      - POSTGRES_PASSWORD=biosecret
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=changeme
+      - DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1] web
+      - SQL_ENGINE=django.db.backends.postgresql
+      - SQL_DATABASE=biodjango
+      - SQL_USER=bioadmin
+      - SQL_PASSWORD=biosecret
+      - SQL_HOST=db
+      - SQL_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  worker:
+    build: ./backend
+    command: celery -A config worker -l info
+    volumes:
+      - ./backend:/app
+      - ${BLAST_DB_PATH}:/data/blastdb
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=changeme
+      - SQL_ENGINE=django.db.backends.postgresql
+      - SQL_DATABASE=biodjango
+      - SQL_USER=bioadmin
+      - SQL_PASSWORD=biosecret
+      - SQL_HOST=db
+      - SQL_PORT=5432
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
