@@ -21,7 +21,8 @@ def run_blast_task(self, task_id, sequence, evalue, db='swissprot'):
 
         # Build command (Ensure blastp is in PATH or use absolute path from settings)
         # Assuming DB is mounted at /data/blastdb inside container
-        db_path = f"/data/blastdb/{db}"
+        from django.conf import settings
+        db_path = os.path.join(settings.BLAST_DB_PATH, db)
         
         command = [
             'blastp',

@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
-import { jwtDecode } from 'jwt-decode';
+// import { jwtDecode } from 'jwt-decode';
 
 interface User {
     username: string;
@@ -19,6 +19,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    console.log("AuthProvider mounting...");
     const [user, setUser] = useState<User | null>(null);
     const [token, setToken] = useState<string | null>(localStorage.getItem('access_token'));
     const [loading, setLoading] = useState(true);
@@ -28,7 +29,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const storedToken = localStorage.getItem('access_token');
             if (storedToken) {
                 try {
-                    const decoded: any = jwtDecode(storedToken);
+                    // Temporary workaround to debug import issue
+                    // const decoded: any = jwtDecode(storedToken);
+                    const decoded = JSON.parse(atob(storedToken.split('.')[1]));
+                    
                     // Check expiration
                     if (decoded.exp * 1000 < Date.now()) {
                         // Token expired, try refresh (TODO: Implement refresh logic)
@@ -59,12 +63,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('refresh_token', refreshToken);
         setToken(accessToken);
         
-        const decoded: any = jwtDecode(accessToken);
-        setUser({ 
-            username: decoded.username || 'User', 
-            email: decoded.email || '',
-            is_staff: decoded.is_staff
-        });
+        try {
+            // const decoded: any = jwtDecode(accessToken);
+            const decoded = JSON.parse(atob(accessToken.split('.')[1]));
+            setUser({ 
+                username: decoded.username || 'User', 
+                email: decoded.email || '',
+                is_staff: decoded.is_staff
+            });
+        } catch (e) {
+            console.error("Login decode error", e);
+        }
         
         axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
     };

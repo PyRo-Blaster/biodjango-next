@@ -16,6 +16,7 @@ services:
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
+      - ${BLAST_DB_PATH:-./blastdb}:/data/blastdb
     ports:
       - "8000:8000"
     environment:

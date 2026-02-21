@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { Upload, FileText, Loader2, AlertCircle } from 'lucide-react';
+import { ExportPDFButton } from '../components/ExportPDFButton';
 import clsx from 'clsx';
 
 interface AnalysisSummary {
@@ -67,6 +68,13 @@ export const SequenceAnalysis = () => {
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-800">Sequence Analysis</h2>
+                {result && (
+                    <ExportPDFButton 
+                        type="PEPTIDE" 
+                        data={result} 
+                        filename="sequence_analysis_report.pdf" 
+                    />
+                )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

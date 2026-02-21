@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
-from .models import Project, AA_Sequence, DNA_Sequence
+from .models import Project, AA_Sequence, DNA_Sequence, AuditLog
 
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -36,12 +36,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create(
+        user = User.objects.create_user(
             username=validated_data['username'],
-            email=validated_data.get('email', '')
+            email=validated_data.get('email', ''),
+            password=validated_data['password']
         )
-        user.set_password(validated_data['password'])
-        user.save()
         return user
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -61,3 +60,12 @@ class DNA_SequenceSerializer(serializers.ModelSerializer):
         model = DNA_Sequence
         fields = ['id', 'project', 'sequence', 'name', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source='actor.username', read_only=True)
+    target_type = serializers.CharField(source='content_type.model', read_only=True)
+    
+    class Meta:
+        model = AuditLog
+        fields = ['id', 'actor', 'actor_username', 'action', 'target_type', 'object_id', 'ip_address', 'timestamp', 'details']
+        read_only_fields = ['id', 'actor', 'actor_username', 'action', 'target_type', 'object_id', 'ip_address', 'timestamp', 'details']

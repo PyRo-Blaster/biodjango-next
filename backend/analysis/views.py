@@ -7,10 +7,14 @@ from .serializers import (
     AnalysisTaskSerializer, 
     BlastTaskCreateSerializer, 
     MsaTaskCreateSerializer, 
-    PeptideCalcSerializer
+    PeptideCalcSerializer,
+    PrimerDesignSerializer,
+    AntibodyAnnotationSerializer
 )
 from .tasks import run_blast_task, run_msa_task
 from .utils import cumulative_calculator, generate_peptides
+from .utils.primer_design import design_primers
+from .utils.antibody_annotation import annotate_antibody
 import io
 
 class AnalysisTaskViewSet(viewsets.ReadOnlyModelViewSet):
@@ -90,3 +94,30 @@ class SequenceAnalysisView(APIView):
             return Response(summary)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class PrimerDesignView(APIView):
+    def post(self, request):
+        serializer = PrimerDesignSerializer(data=request.data)
+        if serializer.is_valid():
+            result = design_primers(
+                sequence=serializer.validated_data['sequence'],
+                product_size_range=serializer.validated_data['product_size_range'],
+                tm_opt=serializer.validated_data['tm_opt']
+            )
+            if 'error' in result:
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class AntibodyAnnotationView(APIView):
+    def post(self, request):
+        serializer = AntibodyAnnotationSerializer(data=request.data)
+        if serializer.is_valid():
+            result = annotate_antibody(
+                sequence=serializer.validated_data['sequence'],
+                scheme=serializer.validated_data['scheme']
+            )
+            if result.get('status') == 'error':
+                return Response(result, status=status.HTTP_400_BAD_REQUEST)
+            return Response(result)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y \
     ncbi-blast+ \
     wget \
     mafft \
+    build-essential \
+    hmmer \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies

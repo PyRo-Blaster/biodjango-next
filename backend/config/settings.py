@@ -55,6 +55,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.ThreadLocalMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -89,7 +90,7 @@ DATABASES = {
         'NAME': os.environ.get("SQL_DATABASE", BASE_DIR / "db.sqlite3"),
         'USER': os.environ.get("SQL_USER", "user"),
         'PASSWORD': os.environ.get("SQL_PASSWORD", "password"),
-        'HOST': os.environ.get("SQL_HOST", "localhost"),
+        'HOST': os.environ.get("SQL_HOST", "biodjango-next-db-1"),
         'PORT': os.environ.get("SQL_PORT", "5432"),
     }
 }
@@ -166,3 +167,10 @@ CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localho
 CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+
+# Run tasks synchronously for debugging if no worker is available
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# BLAST DB Path
+BLAST_DB_PATH = os.environ.get("BLAST_DB_PATH", "/data/blastdb")

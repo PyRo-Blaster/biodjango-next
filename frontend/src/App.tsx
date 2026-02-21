@@ -1,5 +1,6 @@
 import React from 'react';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Layout } from './layouts/MainLayout';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { SequenceAnalysis } from './pages/SequenceAnalysis';
@@ -11,19 +12,13 @@ import { Register } from './pages/Register';
 import { ProjectsList } from './pages/ProjectsList';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { AdminDashboard } from './pages/AdminDashboard';
-
-// Placeholder components for routes not yet implemented
-const Dashboard = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-lg font-semibold mb-2">Welcome Back</h3>
-            <p className="text-slate-600">Select a tool from the sidebar to start your analysis.</p>
-        </div>
-    </div>
-);
+import { Dashboard } from './pages/Dashboard';
+import { PrimerDesign } from './pages/PrimerDesign';
+import { AntibodyAnnotation } from './pages/AntibodyAnnotation';
 
 function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
         <Routes>
             <Route path="/login" element={<Login />} />
@@ -40,12 +35,15 @@ function App() {
                         <Route path="/peptide-calc" element={<PeptideCalculator />} />
                         <Route path="/blast" element={<Blast />} />
                         <Route path="/msa" element={<MSA />} />
+                        <Route path="/primer-design" element={<PrimerDesign />} />
+                        <Route path="/antibody-annotation" element={<AntibodyAnnotation />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </Layout>
             } />
         </Routes>
     </AuthProvider>
+    </ThemeProvider>
   );
 }
 

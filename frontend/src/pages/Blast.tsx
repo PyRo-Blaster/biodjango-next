@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, Loader2, AlertCircle, RefreshCw, FileText } from 'lucide-react';
 import { BlastViewer } from '../components/BlastViewer';
+import { ExportPDFButton } from '../components/ExportPDFButton';
 import clsx from 'clsx';
 
 interface TaskResponse {
@@ -146,6 +147,16 @@ export const Blast = () => {
                                                 <FileText className="w-5 h-5" />
                                                 Analysis Complete
                                             </h3>
+                                            <span className="text-xs text-slate-400">Task ID: {taskId}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {result && (
+                                                <ExportPDFButton 
+                                                    type="BLAST" 
+                                                    data={result} 
+                                                    filename={`blast_${taskId}.pdf`} 
+                                                />
+                                            )}
                                             <button 
                                                 onClick={() => {
                                                     setTaskId(null);
@@ -157,7 +168,6 @@ export const Blast = () => {
                                                 Start New Search
                                             </button>
                                         </div>
-                                        <span className="text-xs text-slate-400">Task ID: {taskId}</span>
                                      </div>
                                      <div className="w-full text-left">
                                         {result && <BlastViewer output={result} />}

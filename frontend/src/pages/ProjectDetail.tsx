@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, FileText, Download } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import clsx from 'clsx';
 
 interface Sequence {
     id: string;
@@ -67,6 +68,21 @@ export const ProjectDetail = () => {
         }
     };
 
+    const handleExport = () => {
+        if (!sequences || sequences.length === 0) return;
+
+        const fastaContent = sequences.map(seq => `>${seq.name}\n${seq.sequence}`).join('\n');
+        const blob = new Blob([fastaContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${project?.name || 'sequences'}_export.fasta`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     if (isLoading) return <div>Loading...</div>;
     if (!project) return <div>Project not found or access denied.</div>;
 
@@ -104,7 +120,16 @@ export const ProjectDetail = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
                     <h3 className="font-semibold text-slate-800">Sequences ({sequences.length})</h3>
-                    <button className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
+                    <button 
+                        onClick={handleExport}
+                        disabled={sequences.length === 0}
+                        className={clsx(
+                            "text-sm flex items-center gap-1",
+                            sequences.length === 0 
+                                ? "text-slate-300 cursor-not-allowed" 
+                                : "text-primary-600 hover:text-primary-700"
+                        )}
+                    >
                         <Download className="w-4 h-4" /> Export All
                     </button>
                 </div>

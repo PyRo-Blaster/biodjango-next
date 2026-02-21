@@ -10,6 +10,12 @@ BioDjango is a modern bioinformatics web platform built with Django REST Framewo
 - **Admin Workflow**: Administrators can approve or reject access requests.
 - **Bulk Upload**: Support for uploading FASTA files containing multiple sequences.
 
+### 🛡️ Robustness & Audit (New in v2.2)
+- **FASTA Validation**: Strict checks for invalid characters and duplicates.
+- **Audit Logs**: Track user actions (Create/Update/Delete) for security compliance.
+- **PDF Export**: Save analysis reports (BLAST, Sequence Analysis) as PDF.
+- **UI Enhancements**: Dark Mode support and new Dashboard statistics.
+
 ### 🧬 Bioinformatics Tools
 - **Peptide Calculator**: Calculate molecular weight, pI, and net charge of peptide sequences.
 - **Sequence Analysis**: Analyze DNA/Protein sequences (GC content, melting temp, etc.).
@@ -34,4 +40,5 @@ See `DEPLOY.md` for detailed deployment instructions.
 
 ## Documentation
 - `docs/iteration_plan_projects.md`: Technical specs for the Project Management module.
+- `docs/iteration_plan_v2.2.md`: Technical specs for Robustness & Audit features.
 - `DEPLOY.md`: Production deployment guide.

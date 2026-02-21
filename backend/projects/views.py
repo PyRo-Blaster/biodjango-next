@@ -5,8 +5,7 @@ from django.db.models import Q
 from .models import Project, ProteinSequence, AccessRequest
 from .serializers import ProjectSerializer, ProteinSequenceSerializer, AccessRequestSerializer
 from .permissions import IsAdminOrReadOnly, HasProjectAccess
-from Bio import SeqIO
-import io
+from .utils import validate_fasta
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
@@ -32,10 +31,35 @@ class ProjectViewSet(viewsets.ModelViewSet):
             return [HasProjectAccess()]
         return [permissions.IsAuthenticated()]
 
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Get project statistics.
+        """
+        user = request.user
+        
+        # Simple stats for dashboard
+        total_projects = Project.objects.count()
+        total_sequences = ProteinSequence.objects.count()
+        
+        if user.is_staff:
+            recent_projects = Project.objects.all().order_by('-created_at')[:5]
+        else:
+            # Show projects user has access to
+            recent_projects = Project.objects.filter(
+                Q(is_public=True) | Q(allowed_users=user)
+            ).distinct().order_by('-created_at')[:5]
+
+        return Response({
+            "total_projects": total_projects,
+            "total_sequences": total_sequences,
+            "recent_projects": ProjectSerializer(recent_projects, many=True).data
+        })
+
     @action(detail=True, methods=['post'], parser_classes=[parsers.MultiPartParser])
     def upload_fasta(self, request, pk=None):
         """
-        Bulk upload sequences via FASTA file.
+        Bulk upload sequences via FASTA file with validation.
         """
         project = self.get_object()
         file_obj = request.data.get('file')
@@ -46,20 +70,25 @@ class ProjectViewSet(viewsets.ModelViewSet):
         try:
             # Decode file content
             content = file_obj.read().decode('utf-8')
-            fasta_io = io.StringIO(content)
             
-            sequences_to_create = []
-            for record in SeqIO.parse(fasta_io, "fasta"):
-                sequences_to_create.append(ProteinSequence(
-                    project=project,
-                    name=record.id,
-                    sequence=str(record.seq),
-                    metadata={"description": record.description}
-                ))
+            # Validate and parse
+            valid_data, errors = validate_fasta(content, project)
             
-            if not sequences_to_create:
-                return Response({"error": "No valid sequences found in FASTA"}, status=status.HTTP_400_BAD_REQUEST)
+            if errors:
+                return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not valid_data:
+                return Response({"error": "No valid sequences found"}, status=status.HTTP_400_BAD_REQUEST)
 
+            sequences_to_create = [
+                ProteinSequence(
+                    project=project,
+                    name=item['name'],
+                    sequence=item['sequence'],
+                    metadata=item['metadata']
+                ) for item in valid_data
+            ]
+            
             ProteinSequence.objects.bulk_create(sequences_to_create)
             
             return Response({
