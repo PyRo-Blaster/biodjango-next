@@ -68,8 +68,8 @@ To transform the existing Django-based bioinformatics application into a modern,
 
 ## Phase 6: Advanced Bioinformatics Tools (v2.3)
 - **Primer Design**:
-    - [ ] Backend: Integrate `primer3-py`.
-    - [ ] Frontend: Create Primer Design form and results view.
+    - [x] Backend: Integrate `primer3-py`.
+    - [x] Frontend: Create Primer Design form and results view.
 - **Antibody Annotation**:
-    - [ ] Backend: Integrate `abnumber`.
-    - [ ] Frontend: Implement CDR Highlighting component (IMGT/KABAT).
+    - [x] Backend: Integrate `abnumber`.
+    - [x] Frontend: Implement CDR Highlighting component (IMGT/KABAT).

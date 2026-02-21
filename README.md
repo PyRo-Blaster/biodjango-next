@@ -16,6 +16,10 @@ BioDjango is a modern bioinformatics web platform built with Django REST Framewo
 - **PDF Export**: Save analysis reports (BLAST, Sequence Analysis) as PDF.
 - **UI Enhancements**: Dark Mode support and new Dashboard statistics.
 
+### 🧪 Advanced Bioinformatics (New in v2.3)
+- **Primer Design**: Design primers for PCR using Primer3 (with 5 pairs generated).
+- **Antibody Annotation**: Annotate and highlight CDRs in antibody sequences (IMGT/KABAT schemes).
+
 ### 🧬 Bioinformatics Tools
 - **Peptide Calculator**: Calculate molecular weight, pI, and net charge of peptide sequences.
 - **Sequence Analysis**: Analyze DNA/Protein sequences (GC content, melting temp, etc.).
@@ -41,4 +45,5 @@ See `DEPLOY.md` for detailed deployment instructions.
 ## Documentation
 - `docs/iteration_plan_projects.md`: Technical specs for the Project Management module.
 - `docs/iteration_plan_v2.2.md`: Technical specs for Robustness & Audit features.
+- `docs/iteration_plan_v2.3.md`: Technical specs for Advanced Bioinformatics tools.
 - `DEPLOY.md`: Production deployment guide.
