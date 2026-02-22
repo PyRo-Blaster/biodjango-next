@@ -1,10 +1,18 @@
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 import subprocess
 import os
 import uuid
 from .models import AnalysisTask
 
-@shared_task(bind=True)
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=3,
+    retry_jitter=True
+)
 def run_blast_task(self, task_id, sequence, evalue, db='swissprot'):
     try:
         task = AnalysisTask.objects.get(id=task_id)
@@ -23,14 +31,15 @@ def run_blast_task(self, task_id, sequence, evalue, db='swissprot'):
         # Assuming DB is mounted at /data/blastdb inside container
         from django.conf import settings
         db_path = os.path.join(settings.BLAST_DB_PATH, db)
-        
+        num_threads = os.environ.get("BLAST_NUM_THREADS", "4")
+
         command = [
             'blastp',
             '-query', input_path,
             '-out', output_path,
             '-db', db_path,
             '-evalue', str(evalue),
-            '-num_threads', "4" # Adjusted threads
+            '-num_threads', num_threads
         ]
 
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -64,7 +73,14 @@ def run_blast_task(self, task_id, sequence, evalue, db='swissprot'):
             task.save()
         return {"status": "error", "message": str(e)}
 
-@shared_task(bind=True)
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=3,
+    retry_jitter=True
+)
 def run_msa_task(self, task_id, sequence):
     try:
         task = AnalysisTask.objects.get(id=task_id)
@@ -78,11 +94,15 @@ def run_msa_task(self, task_id, sequence):
         with open(input_path, "w") as f:
             f.write(sequence)
 
-        # Using MAFFT
-        # mafft --auto --clustalout input > output
-        command = f"mafft --auto --clustalout {input_path} > {output_path}"
+        # Using MAFFT - use list instead of shell=True for security
+        command = ['mafft', '--auto', '--clustalout', input_path]
 
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        with open(output_path, 'w') as out_file:
+            process = subprocess.Popen(
+                command,
+                stdout=out_file,
+                stderr=subprocess.PIPE
+            )
         stdout, stderr = process.communicate()
 
         if process.returncode != 0:

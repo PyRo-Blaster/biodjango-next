@@ -1,48 +1,99 @@
-import React from 'react';
-import { AuthProvider } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
-import { Layout } from './layouts/MainLayout';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { SequenceAnalysis } from './pages/SequenceAnalysis';
-import { PeptideCalculator } from './pages/PeptideCalculator';
-import { Blast } from './pages/Blast';
-import { MSA } from './pages/MSA';
-import { Login } from './pages/Login';
-import { Register } from './pages/Register';
-import { ProjectsList } from './pages/ProjectsList';
-import { ProjectDetail } from './pages/ProjectDetail';
-import { AdminDashboard } from './pages/AdminDashboard';
-import { Dashboard } from './pages/Dashboard';
-import { PrimerDesign } from './pages/PrimerDesign';
-import { AntibodyAnnotation } from './pages/AntibodyAnnotation';
+import { Suspense, lazy } from "react";
+import { AuthProvider } from "./context/AuthContext";
+import { ThemeProvider } from "./context/ThemeContext";
+import { ToastProvider } from "./context/ToastContext";
+import { Layout } from "./layouts/MainLayout";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
+import { LoadingSpinner } from "./components/ui/LoadingSpinner";
+
+// Lazy load all page components for code splitting
+const Dashboard = lazy(() =>
+  import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })),
+);
+const ProjectsList = lazy(() =>
+  import("./pages/ProjectsList").then((m) => ({ default: m.ProjectsList })),
+);
+const ProjectDetail = lazy(() =>
+  import("./pages/ProjectDetail").then((m) => ({ default: m.ProjectDetail })),
+);
+const AdminDashboard = lazy(() =>
+  import("./pages/AdminDashboard").then((m) => ({ default: m.AdminDashboard })),
+);
+const SequenceAnalysis = lazy(() =>
+  import("./pages/SequenceAnalysis").then((m) => ({
+    default: m.SequenceAnalysis,
+  })),
+);
+const PeptideCalculator = lazy(() =>
+  import("./pages/PeptideCalculator").then((m) => ({
+    default: m.PeptideCalculator,
+  })),
+);
+const Blast = lazy(() =>
+  import("./pages/Blast").then((m) => ({ default: m.Blast })),
+);
+const MSA = lazy(() => import("./pages/MSA").then((m) => ({ default: m.MSA })));
+const PrimerDesign = lazy(() =>
+  import("./pages/PrimerDesign").then((m) => ({ default: m.PrimerDesign })),
+);
+const AntibodyAnnotation = lazy(() =>
+  import("./pages/AntibodyAnnotation").then((m) => ({
+    default: m.AntibodyAnnotation,
+  })),
+);
+
+function PageLoader() {
+  return <LoadingSpinner />;
+}
 
 function App() {
   return (
     <ThemeProvider>
-    <AuthProvider>
-        <Routes>
+      <AuthProvider>
+        <ToastProvider>
+          <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            
-            <Route path="/*" element={
+
+            <Route
+              path="/*"
+              element={
                 <Layout>
+                  <Suspense fallback={<PageLoader />}>
                     <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/projects" element={<ProjectsList />} />
-                        <Route path="/projects/:id" element={<ProjectDetail />} />
-                        <Route path="/admin-dashboard" element={<AdminDashboard />} />
-                        <Route path="/sequence-analysis" element={<SequenceAnalysis />} />
-                        <Route path="/peptide-calc" element={<PeptideCalculator />} />
-                        <Route path="/blast" element={<Blast />} />
-                        <Route path="/msa" element={<MSA />} />
-                        <Route path="/primer-design" element={<PrimerDesign />} />
-                        <Route path="/antibody-annotation" element={<AntibodyAnnotation />} />
-                        <Route path="*" element={<Navigate to="/" replace />} />
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/projects" element={<ProjectsList />} />
+                      <Route path="/projects/:id" element={<ProjectDetail />} />
+                      <Route
+                        path="/admin-dashboard"
+                        element={<AdminDashboard />}
+                      />
+                      <Route
+                        path="/sequence-analysis"
+                        element={<SequenceAnalysis />}
+                      />
+                      <Route
+                        path="/peptide-calc"
+                        element={<PeptideCalculator />}
+                      />
+                      <Route path="/blast" element={<Blast />} />
+                      <Route path="/msa" element={<MSA />} />
+                      <Route path="/primer-design" element={<PrimerDesign />} />
+                      <Route
+                        path="/antibody-annotation"
+                        element={<AntibodyAnnotation />}
+                      />
+                      <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
+                  </Suspense>
                 </Layout>
-            } />
-        </Routes>
-    </AuthProvider>
+              }
+            />
+          </Routes>
+        </ToastProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

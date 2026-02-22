@@ -46,8 +46,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
-        fields = ['id', 'project_id', 'security_key', 'created_at']
-        read_only_fields = ['id', 'security_key', 'created_at']
+        fields = ['id', 'project_id', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 class AA_SequenceSerializer(serializers.ModelSerializer):
     class Meta:

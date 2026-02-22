@@ -28,7 +28,7 @@ class RegisterView(generics.CreateAPIView):
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
-    permission_classes = [permissions.AllowAny] # In production, restrict this
+    permission_classes = [permissions.IsAuthenticated]
 
     @action(detail=False, methods=['post'])
     def verify(self, request):
@@ -47,7 +47,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 class AA_SequenceViewSet(viewsets.ModelViewSet):
     queryset = AA_Sequence.objects.all()
     serializer_class = AA_SequenceSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """
@@ -63,7 +63,7 @@ class AA_SequenceViewSet(viewsets.ModelViewSet):
 class DNA_SequenceViewSet(viewsets.ModelViewSet):
     queryset = DNA_Sequence.objects.all()
     serializer_class = DNA_SequenceSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         queryset = DNA_Sequence.objects.all()
