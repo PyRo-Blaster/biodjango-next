@@ -1,34 +1,32 @@
 import React, { useState } from "react";
-import axios from "axios";
-import { Download, Loader2 } from "lucide-react";
-import { useToast } from "../context/ToastContext";
+import { AlertCircle, Download, Loader2 } from "lucide-react";
+import { apiClient } from "../api/client";
+import { RateLimitAlert } from "../components/RateLimitAlert";
+import { useAnalysisTool } from "../hooks/useAnalysisTool";
 
 export const PeptideCalculator = () => {
   const [targetMass, setTargetMass] = useState<string>("500.0");
   const [errorRange, setErrorRange] = useState<string>("1.0");
   const [numAminoAcids, setNumAminoAcids] = useState<string>("4");
-  const [isLoading, setIsLoading] = useState(false);
   const [csvContent, setCsvContent] = useState<string | null>(null);
-  const { showToast } = useToast();
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ csv_content: string }>();
 
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setCsvContent(null);
+    resetError();
 
-    try {
-      const response = await axios.post("/api/analysis/peptide-calc/", {
+    const response = await execute(async () => {
+      const result = await apiClient.post<{ csv_content: string }>("/analysis/peptide-calc/", {
         target_mass: parseFloat(targetMass),
         error_range: parseFloat(errorRange),
         num_amino_acids: parseInt(numAminoAcids),
       });
+      return result.data;
+    });
 
-      setCsvContent(response.data.csv_content);
-    } catch (error) {
-      console.error("Calculation failed", error);
-      showToast("Calculation failed. Please check your inputs.", "error");
-    } finally {
-      setIsLoading(false);
+    if (response?.csv_content) {
+      setCsvContent(response.csv_content);
     }
   };
 
@@ -52,6 +50,21 @@ export const PeptideCalculator = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <form onSubmit={handleCalculate} className="space-y-6">
+          {errorInfo?.isRateLimited && (
+            <RateLimitAlert
+              retryAfter={errorInfo.retryAfter || 10}
+              message={errorInfo.message}
+              onRetryReady={resetError}
+            />
+          )}
+
+          {errorInfo && !errorInfo.isRateLimited && (
+            <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>{errorInfo.message}</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -104,10 +117,10 @@ export const PeptideCalculator = () => {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={loading}
             className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLoading ? (
+            {loading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
               "Calculate Peptides"

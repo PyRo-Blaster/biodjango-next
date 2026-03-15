@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import {
   Search,
   Loader2,
@@ -7,8 +6,11 @@ import {
   RefreshCw,
   FileText,
 } from "lucide-react";
+import { apiClient, handleApiError } from "../api/client";
 import { BlastViewer } from "../components/BlastViewer";
 import { ExportPDFButton } from "../components/ExportPDFButton";
+import { RateLimitAlert } from "../components/RateLimitAlert";
+import { useAnalysisTool } from "../hooks/useAnalysisTool";
 
 interface TaskResponse {
   id: string;
@@ -28,6 +30,7 @@ export const Blast = () => {
   const [taskStatus, setTaskStatus] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskResponse>();
 
   // Polling effect
   useEffect(() => {
@@ -36,9 +39,7 @@ export const Blast = () => {
     if (taskId && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE") {
       intervalId = setInterval(async () => {
         try {
-          const response = await axios.get<TaskResponse>(
-            `/api/analysis/tasks/${taskId}/`,
-          );
+          const response = await apiClient.get<TaskResponse>(`/analysis/tasks/${taskId}/`);
           setTaskStatus(response.data.status);
 
           if (response.data.status === "SUCCESS" && response.data.result) {
@@ -49,10 +50,11 @@ export const Blast = () => {
             // setTaskId(null); // Keep taskId to show error
           }
         } catch (err) {
-          console.error("Polling error", err);
-          setTaskId(null); // Stop polling on network error
+          const parsed = handleApiError(err);
+          setError(parsed.message);
+          setTaskId(null);
         }
-      }, 2000); // Poll every 2 seconds
+      }, 2000);
     }
 
     return () => {
@@ -66,21 +68,20 @@ export const Blast = () => {
     setResult(null);
     setTaskId(null);
     setTaskStatus(null);
+    resetError();
 
-    try {
-      const response = await axios.post("/api/analysis/blast/", {
+    const created = await execute(async () => {
+      const response = await apiClient.post<TaskResponse>("/analysis/blast/", {
         sequence,
         evalue: parseFloat(evalue),
         db,
       });
-      setTaskId(response.data.id);
+      return response.data;
+    });
+
+    if (created?.id) {
+      setTaskId(created.id);
       setTaskStatus("PENDING");
-    } catch (err: any) {
-      console.error("Submission failed", err);
-      setError(
-        err.response?.data?.detail ||
-          "Submission failed. Please check your inputs.",
-      );
     }
   };
 
@@ -93,6 +94,21 @@ export const Blast = () => {
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
+              {errorInfo?.isRateLimited && (
+                <RateLimitAlert
+                  retryAfter={errorInfo.retryAfter || 10}
+                  message={errorInfo.message}
+                  onRetryReady={resetError}
+                />
+              )}
+
+              {errorInfo && !errorInfo.isRateLimited && (
+                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{errorInfo.message}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Sequence (FASTA)
@@ -136,16 +152,15 @@ export const Blast = () => {
                   <option value="test_db">Test DB</option>
                   <option value="swissprot">SwissProt</option>
                   <option value="pdbaa">PDB</option>
-                  {/* Add more DBs if configured */}
                 </select>
               </div>
 
               <button
                 type="submit"
-                disabled={!!taskId}
+                disabled={!!taskId || loading}
                 className="w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {taskId ? (
+                {taskId || loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   "Run BLAST"

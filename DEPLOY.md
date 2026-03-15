@@ -1,8 +1,12 @@
-# BioDjango v2.6.0 Production Deployment Guide
+# BioDjango v2.7 Production Deployment Guide
 
 ## Overview
 
-This guide covers deploying BioDjango to a production server using Docker Compose. **v2.6.0 simplifies the deployment to a single command.**
+This guide covers deploying BioDjango to a production server using Docker Compose.
+
+For external beta rollout, see:
+
+- `docs/beta_test_guide_v2.7.md` (deployment + tester instructions + feedback template)
 
 ---
 

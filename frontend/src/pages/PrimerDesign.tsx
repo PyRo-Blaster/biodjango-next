@@ -1,7 +1,9 @@
 import React, { useState } from "react";
-import axios from "axios";
-import { Dna } from "lucide-react";
+import { AlertCircle, Dna } from "lucide-react";
 import clsx from "clsx";
+import { apiClient } from "../api/client";
+import { RateLimitAlert } from "../components/RateLimitAlert";
+import { useAnalysisTool } from "../hooks/useAnalysisTool";
 
 interface Primer {
   sequence: string;
@@ -22,31 +24,27 @@ export const PrimerDesign = () => {
   const [sequence, setSequence] = useState("");
   const [productSize, setProductSize] = useState("100-300");
   const [tmOpt, setTmOpt] = useState(60.0);
-  const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ primers: PrimerPair[] } | null>(null);
   const [error, setError] = useState("");
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ primers: PrimerPair[] }>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError("");
     setResult(null);
+    resetError();
 
-    try {
-      const response = await axios.post("/api/analysis/primer-design/", {
+    const response = await execute(async () => {
+      const resultData = await apiClient.post<{ primers: PrimerPair[] }>("/analysis/primer-design/", {
         sequence,
         product_size_range: productSize,
         tm_opt: tmOpt,
       });
-      setResult(response.data);
-    } catch (err: any) {
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.sequence?.[0] ||
-          "Failed to design primers",
-      );
-    } finally {
-      setLoading(false);
+      return resultData.data;
+    });
+
+    if (response) {
+      setResult(response);
     }
   };
 
@@ -61,6 +59,21 @@ export const PrimerDesign = () => {
         {/* Input Form */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {errorInfo?.isRateLimited && (
+              <RateLimitAlert
+                retryAfter={errorInfo.retryAfter || 10}
+                message={errorInfo.message}
+                onRetryReady={resetError}
+              />
+            )}
+
+            {errorInfo && !errorInfo.isRateLimited && (
+              <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span>{errorInfo.message}</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Template Sequence (DNA)

@@ -9,7 +9,34 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+const PUBLIC_API_PREFIXES = ['/analysis/', '/auth/', '/health/'];
+
+function normalizePath(url: string | undefined): string {
+  if (!url) return '';
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    return new URL(url, base).pathname;
+  } catch {
+    return url;
+  }
+}
+
+function isPublicPath(url: string | undefined): boolean {
+  const path = normalizePath(url);
+  return PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function parseRetryAfter(value: unknown): number | undefined {
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+  if (typeof value === 'number') {
+    return value;
+  }
+  return undefined;
+}
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('access_token');
@@ -21,39 +48,50 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle errors and token refresh
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config;
+    const requestUrl = originalRequest?.url;
+    const status = error.response?.status;
 
-    // If 401 and not already retrying, try to refresh token
-    if (error.response?.status === 401 && originalRequest && !originalRequest.headers['X-Retry']) {
+    if (status === 429) {
+      return Promise.reject(error);
+    }
+
+    if (status === 401 && isPublicPath(requestUrl)) {
+      return Promise.reject(error);
+    }
+
+    if (status === 401 && originalRequest && originalRequest.headers && !originalRequest.headers['X-Retry']) {
       const refreshToken = localStorage.getItem('refresh_token');
 
-      if (refreshToken) {
-        try {
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
-            refresh: refreshToken,
-          });
+      if (!refreshToken) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(error);
+      }
 
-          const { access } = response.data;
-          localStorage.setItem('access_token', access);
+      try {
+        const response = await axios.post(`${API_BASE_URL}/auth/token/refresh/`, {
+          refresh: refreshToken,
+        });
 
-          // Retry the original request
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${access}`;
-            originalRequest.headers['X-Retry'] = 'true';
-          }
+        const { access } = response.data as { access: string };
+        localStorage.setItem('access_token', access);
 
-          return apiClient(originalRequest);
-        } catch (refreshError) {
-          // Refresh failed, logout user
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
-          return Promise.reject(refreshError);
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${access}`;
+          originalRequest.headers['X-Retry'] = 'true';
         }
+
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
       }
     }
 
@@ -68,22 +106,60 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export function handleApiError(error: unknown): string {
+export interface ApiErrorInfo {
+  message: string;
+  status?: number;
+  isRateLimited: boolean;
+  retryAfter?: number;
+}
+
+export function handleApiError(error: unknown): ApiErrorInfo {
   if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+
+    if (status === 429) {
+      const retryAfterHeader = error.response?.headers?.['retry-after'];
+      const retryAfter = parseRetryAfter(retryAfterHeader);
+      const data = error.response?.data as Record<string, unknown> | undefined;
+      const detail = typeof data?.detail === 'string' ? data.detail : undefined;
+      return {
+        message: detail || 'Request rate limited. Please wait and retry.',
+        status,
+        isRateLimited: true,
+        retryAfter,
+      };
+    }
+
     if (error.response) {
       const data = error.response.data as Record<string, unknown>;
+      let message = 'An error occurred';
       if (typeof data.detail === 'string') {
-        return data.detail;
+        message = data.detail;
+      } else if (typeof data.error === 'string') {
+        message = data.error;
+      } else if (typeof data.message === 'string') {
+        message = data.message;
+      } else if (Array.isArray(data)) {
+        message = data.join(', ');
+      } else {
+        const firstArray = Object.values(data).find((value) => Array.isArray(value));
+        if (Array.isArray(firstArray) && typeof firstArray[0] === 'string') {
+          message = firstArray[0];
+        }
       }
-      if (Array.isArray(data)) {
-        return data.join(', ');
-      }
-      return JSON.stringify(data);
+      return { message, status, isRateLimited: false };
     }
+
     if (error.request) {
-      return 'Network error. Please check your connection.';
+      return {
+        message: 'Network error. Please check your connection.',
+        status,
+        isRateLimited: false,
+      };
     }
-    return error.message;
+
+    return { message: error.message, status, isRateLimited: false };
   }
-  return 'An unexpected error occurred';
+
+  return { message: 'An unexpected error occurred', isRateLimited: false };
 }
