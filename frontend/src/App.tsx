@@ -3,7 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { Layout } from "./layouts/MainLayout";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { LoadingSpinner } from "./components/ui/LoadingSpinner";
@@ -48,6 +48,16 @@ function PageLoader() {
   return <LoadingSpinner />;
 }
 
+function LayoutShell() {
+  return (
+    <Layout>
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
+    </Layout>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -56,41 +66,22 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-
-            <Route
-              path="/*"
-              element={
-                <Layout>
-                  <Suspense fallback={<PageLoader />}>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/projects" element={<ProjectsList />} />
-                      <Route path="/projects/:id" element={<ProjectDetail />} />
-                      <Route
-                        path="/admin-dashboard"
-                        element={<AdminDashboard />}
-                      />
-                      <Route
-                        path="/sequence-analysis"
-                        element={<SequenceAnalysis />}
-                      />
-                      <Route
-                        path="/peptide-calc"
-                        element={<PeptideCalculator />}
-                      />
-                      <Route path="/blast" element={<Blast />} />
-                      <Route path="/msa" element={<MSA />} />
-                      <Route path="/primer-design" element={<PrimerDesign />} />
-                      <Route
-                        path="/antibody-annotation"
-                        element={<AntibodyAnnotation />}
-                      />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </Suspense>
-                </Layout>
-              }
-            />
+            <Route element={<LayoutShell />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/projects" element={<ProjectsList />} />
+              <Route path="/projects/:id" element={<ProjectDetail />} />
+              <Route path="/admin-dashboard" element={<AdminDashboard />} />
+              <Route path="/sequence-analysis" element={<SequenceAnalysis />} />
+              <Route path="/peptide-calc" element={<PeptideCalculator />} />
+              <Route path="/blast" element={<Blast />} />
+              <Route path="/msa" element={<MSA />} />
+              <Route path="/primer-design" element={<PrimerDesign />} />
+              <Route
+                path="/antibody-annotation"
+                element={<AntibodyAnnotation />}
+              />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </ToastProvider>
       </AuthProvider>

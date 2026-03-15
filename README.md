@@ -47,3 +47,4 @@ See `DEPLOY.md` for detailed deployment instructions.
 - `docs/iteration_plan_v2.2.md`: Technical specs for Robustness & Audit features.
 - `docs/iteration_plan_v2.3.md`: Technical specs for Advanced Bioinformatics tools.
 - `DEPLOY.md`: Production deployment guide.
+- `docs/beta_test_guide_v2.7.md`: Beta deployment runbook, tester instructions, and feedback template.

@@ -147,6 +147,11 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon_burst': '6/min',
+        'user_burst': '60/min',
+    },
 }
 
 from datetime import timedelta

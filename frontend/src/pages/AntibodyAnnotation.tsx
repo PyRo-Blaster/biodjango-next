@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import axios from 'axios';
-import { ShieldCheck, Info } from 'lucide-react';
+import { AlertCircle, ShieldCheck, Info } from 'lucide-react';
 import clsx from 'clsx';
+import { apiClient } from '../api/client';
+import { RateLimitAlert } from '../components/RateLimitAlert';
+import { useAnalysisTool } from '../hooks/useAnalysisTool';
 
 interface AnnotationResult {
     chain_type: string;
@@ -21,26 +23,26 @@ interface AnnotationResult {
 export const AntibodyAnnotation = () => {
     const [sequence, setSequence] = useState('');
     const [scheme, setScheme] = useState('imgt');
-    const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<AnnotationResult | null>(null);
     const [error, setError] = useState('');
+    const { loading, errorInfo, execute, resetError } = useAnalysisTool<AnnotationResult>();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
         setError('');
         setResult(null);
+        resetError();
 
-        try {
-            const response = await axios.post('/api/analysis/antibody-annotation/', {
+        const response = await execute(async () => {
+            const resultData = await apiClient.post<AnnotationResult>('/analysis/antibody-annotation/', {
                 sequence,
                 scheme
             });
-            setResult(response.data);
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.response?.data?.error || 'Failed to annotate sequence');
-        } finally {
-            setLoading(false);
+            return resultData.data;
+        });
+
+        if (response) {
+            setResult(response);
         }
     };
 
@@ -55,6 +57,21 @@ export const AntibodyAnnotation = () => {
                 {/* Input */}
                 <div className="lg:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
                     <form onSubmit={handleSubmit} className="space-y-4">
+                        {errorInfo?.isRateLimited && (
+                            <RateLimitAlert
+                                retryAfter={errorInfo.retryAfter || 10}
+                                message={errorInfo.message}
+                                onRetryReady={resetError}
+                            />
+                        )}
+
+                        {errorInfo && !errorInfo.isRateLimited && (
+                            <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span>{errorInfo.message}</span>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 Protein Sequence
