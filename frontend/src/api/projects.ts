@@ -1,7 +1,14 @@
 import { apiClient } from './client';
 
+export interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
 export interface Project {
-  id: number;
+  id: string;
   name: string;
   description?: string;
   created_at: string;
@@ -12,51 +19,59 @@ export interface Project {
   };
   is_public: boolean;
   sequences_count?: number;
+  access_status?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+  is_allowed?: boolean;
 }
 
-export interface ProjectDetail extends Project {
-  sequences: Sequence[];
-}
+export type ProjectDetail = Project;
 
 export interface Sequence {
-  id: number;
+  id: string;
   name: string;
   sequence: string;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 
 export const projectsApi = {
   list: async (): Promise<Project[]> => {
-    const response = await apiClient.get<Project[]>('/api/projects/');
-    return response.data;
+    const response = await apiClient.get<Project[] | Paginated<Project>>('/projects/');
+    return Array.isArray(response.data) ? response.data : response.data.results;
   },
 
-  get: async (id: number): Promise<ProjectDetail> => {
-    const response = await apiClient.get<ProjectDetail>(`/api/projects/${id}/`);
+  get: async (id: string): Promise<ProjectDetail> => {
+    const response = await apiClient.get<ProjectDetail>(`/projects/${id}/`);
     return response.data;
   },
 
   create: async (data: Partial<Project>): Promise<Project> => {
-    const response = await apiClient.post<Project>('/api/projects/', data);
+    const response = await apiClient.post<Project>('/projects/', data);
     return response.data;
   },
 
-  update: async (id: number, data: Partial<Project>): Promise<Project> => {
-    const response = await apiClient.patch<Project>(`/api/projects/${id}/`, data);
+  update: async (id: string, data: Partial<Project>): Promise<Project> => {
+    const response = await apiClient.patch<Project>(`/projects/${id}/`, data);
     return response.data;
   },
 
-  delete: async (id: number): Promise<void> => {
-    await apiClient.delete(`/api/projects/${id}/`);
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/projects/${id}/`);
   },
 
-  // Sequence operations
-  addSequence: async (projectId: number, sequence: { name: string; sequence: string }): Promise<Sequence> => {
-    const response = await apiClient.post<Sequence>(`/api/projects/${projectId}/sequences/`, sequence);
+  uploadFasta: async (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(`/projects/${id}/upload_fasta/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
 
-  deleteSequence: async (projectId: number, sequenceId: number): Promise<void> => {
-    await apiClient.delete(`/api/projects/${projectId}/sequences/${sequenceId}/`);
+  requestAccess: async (projectId: string, reason: string) => {
+    const response = await apiClient.post('/projects/access-requests/', {
+      project: projectId,
+      reason,
+    });
+    return response.data;
   },
 };

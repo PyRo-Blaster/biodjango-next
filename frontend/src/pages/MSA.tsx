@@ -25,7 +25,7 @@ export const MSA = () => {
 
     // Polling effect
     useEffect(() => {
-        let intervalId: any;
+        let intervalId: ReturnType<typeof setInterval> | undefined;
 
         if (taskId && taskStatus !== 'SUCCESS' && taskStatus !== 'FAILURE') {
             intervalId = setInterval(async () => {

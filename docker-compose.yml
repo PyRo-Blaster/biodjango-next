@@ -3,6 +3,8 @@ services:
     image: postgres:15-alpine
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_DB=biodjango
       - POSTGRES_USER=bioadmin
@@ -10,9 +12,14 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
   web:
-    build: ./backend
+    build:
+      context: ./backend
+    image: biodjango-backend:dev
+    pull_policy: never
     command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
@@ -36,11 +43,13 @@ services:
       - redis
 
   worker:
-    build: ./backend
+    image: biodjango-backend:dev
+    pull_policy: never
+    entrypoint: ["/entrypoint-worker.sh"]
     command: celery -A config worker -l info
     volumes:
       - ./backend:/app
-      - ${BLAST_DB_PATH}:/data/blastdb
+      - ${BLAST_DB_PATH:-./blastdb}:/data/blastdb
     environment:
       - DEBUG=1
       - SECRET_KEY=changeme
@@ -55,6 +64,7 @@ services:
     depends_on:
       - db
       - redis
+      - web
 
   frontend:
     build:

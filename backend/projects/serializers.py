@@ -23,16 +23,24 @@ class ProjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'created_at', 'owner', 'sequences_count', 'is_public', 'access_status', 'is_allowed']
         read_only_fields = ['created_at', 'owner']
 
+    def _prefetched_access_requests(self, obj):
+        return getattr(obj, "_prefetched_objects_cache", {}).get("access_requests")
+
+    def _prefetched_allowed_users(self, obj):
+        return getattr(obj, "_prefetched_objects_cache", {}).get("allowed_users")
+
     def get_access_status(self, obj):
         user = self.context['request'].user
         if not user.is_authenticated:
             return None
-        # Check if there is a pending request
-        try:
-            req = AccessRequest.objects.get(user=user, project=obj)
-            return req.status
-        except AccessRequest.DoesNotExist:
+        access_requests = self._prefetched_access_requests(obj)
+        if access_requests is not None:
+            for req in access_requests:
+                if req.user_id == user.id:
+                    return req.status
             return None
+        req = AccessRequest.objects.filter(user=user, project=obj).only("status").first()
+        return req.status if req else None
 
     def get_is_allowed(self, obj):
         user = self.context['request'].user
@@ -40,6 +48,11 @@ class ProjectSerializer(serializers.ModelSerializer):
             return False
         if user.is_staff:
             return True
+        if obj.owner_id == user.id or obj.is_public:
+            return True
+        allowed_users = self._prefetched_allowed_users(obj)
+        if allowed_users is not None:
+            return any(allowed_user.id == user.id for allowed_user in allowed_users)
         return obj.allowed_users.filter(id=user.id).exists()
 
 class AccessRequestSerializer(serializers.ModelSerializer):

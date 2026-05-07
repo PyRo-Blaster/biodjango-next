@@ -1,34 +1,38 @@
 from rest_framework import viewsets, permissions, status, parsers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.utils import timezone
 from .models import Project, ProteinSequence, AccessRequest
 from .serializers import ProjectSerializer, ProteinSequenceSerializer, AccessRequestSerializer
-from .permissions import IsAdminOrReadOnly, HasProjectAccess
+from .permissions import (
+    CanReviewAccessRequest,
+    HasProjectAccess,
+    IsOwnerOrStaffOrReadOnly,
+)
 from .utils import validate_fasta
 
 class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
-    permission_classes = [permissions.IsAuthenticated] # Default base, refined by custom perms
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        # Admins see all
-        if user.is_staff:
-            return Project.objects.all()
-        # Users see public projects + projects they are allowed in
-        # But we want users to SEE all projects in the list (metadata), just not access details.
-        # So we return all projects for LIST, but restrict RETRIEVE.
-        return Project.objects.all()
+        return Project.objects.select_related("owner").prefetch_related(
+            "allowed_users",
+            "access_requests",
+        )
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 'upload_fasta']:
-            return [permissions.IsAdminUser()]
-        if self.action == 'retrieve':
-            return [HasProjectAccess()]
+        if self.action == "create":
+            return [permissions.IsAuthenticated()]
+        if self.action in ("update", "partial_update", "destroy", "upload_fasta"):
+            return [permissions.IsAuthenticated(), IsOwnerOrStaffOrReadOnly()]
+        if self.action == "retrieve":
+            return [permissions.IsAuthenticated(), HasProjectAccess()]
         return [permissions.IsAuthenticated()]
 
     @action(detail=False, methods=['get'])
@@ -45,9 +49,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             recent_projects = Project.objects.all().order_by('-created_at')[:5]
         else:
-            # Show projects user has access to
             recent_projects = Project.objects.filter(
-                Q(is_public=True) | Q(allowed_users=user)
+                Q(owner=user) | Q(is_public=True) | Q(allowed_users=user)
             ).distinct().order_by('-created_at')[:5]
 
         return Response({
@@ -105,21 +108,16 @@ class ProteinSequenceViewSet(viewsets.ReadOnlyModelViewSet):
     Read-only view for sequences. Creation happens via Project bulk upload or admin.
     """
     serializer_class = ProteinSequenceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasProjectAccess]
 
     def get_queryset(self):
-        project_id = self.request.query_params.get('project_id')
+        project_id = self.request.query_params.get("project_id")
         if not project_id:
             return ProteinSequence.objects.none()
-        
-        # Check permission for the project
-        try:
-            project = Project.objects.get(id=project_id)
-            if not HasProjectAccess().has_object_permission(self.request, self, project):
-                return ProteinSequence.objects.none()
-            return project.sequences.all()
-        except Project.DoesNotExist:
-            return ProteinSequence.objects.none()
+
+        project = get_object_or_404(Project, id=project_id)
+        self.check_object_permissions(self.request, project)
+        return project.sequences.select_related("project").all()
 
 class AccessRequestViewSet(viewsets.ModelViewSet):
     serializer_class = AccessRequestSerializer
@@ -129,12 +127,20 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return AccessRequest.objects.all().order_by('-created_at')
-        return AccessRequest.objects.filter(user=user).order_by('-created_at')
+        if self.action == "review":
+            return AccessRequest.objects.all().order_by("-created_at")
+        return AccessRequest.objects.filter(
+            Q(user=user) | Q(project__owner=user)
+        ).distinct().order_by("-created_at")
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAdminUser])
+    @action(
+        detail=True,
+        methods=["patch"],
+        permission_classes=[permissions.IsAuthenticated, CanReviewAccessRequest],
+    )
     def review(self, request, pk=None):
         """
         Approve or Reject a request.
@@ -147,7 +153,8 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             
         access_request.status = new_status
         access_request.reviewed_by = request.user
-        access_request.save()
+        access_request.reviewed_at = timezone.now()
+        access_request.save(update_fields=["status", "reviewed_by", "reviewed_at"])
 
         if new_status == 'APPROVED':
             access_request.project.allowed_users.add(access_request.user)

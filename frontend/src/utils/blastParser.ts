@@ -52,8 +52,8 @@ export const parseBlastOutput = (output: string): Hit[] => {
 
         if (line.includes('Score =') && currentHit) {
             // Score = 74.7 bits (182),  Expect = 6e-17
-            const scoreMatch = line.match(/Score =\s+([\d\.]+)\s+bits/);
-            const expectMatch = line.match(/Expect =\s+([e\-\d\.]+)/);
+            const scoreMatch = line.match(/Score =\s+([\d.]+)\s+bits/);
+            const expectMatch = line.match(/Expect =\s+([e-\d.]+)/);
             
             if (scoreMatch) currentHit.score = scoreMatch[1];
             if (expectMatch) currentHit.evalue = expectMatch[1];

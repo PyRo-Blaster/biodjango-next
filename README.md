@@ -1,50 +1,65 @@
-# BioDjango Next Generation
+# BioDjango Next Generation (v2.9)
 
-BioDjango is a modern bioinformatics web platform built with Django REST Framework and React. It provides tools for sequence analysis, peptide calculations, BLAST searches, and multiple sequence alignment (MSA).
+BioDjango is a full-stack bioinformatics platform built with Django REST Framework and React.  
+Version `v2.9` focuses on production deployment hardening and beta debugging readiness.
 
-## Features
+## What's New in v2.9
 
-### 🔐 Project Management (New in v2.1)
-- **Role-Based Access Control (RBAC)**: Secure project access.
-- **Visitor Access**: Users can request access to private projects.
-- **Admin Workflow**: Administrators can approve or reject access requests.
-- **Bulk Upload**: Support for uploading FASTA files containing multiple sequences.
+- Production stack uses a single backend image shared by `web` and `worker`.
+- Only `web` runs `migrate` and `collectstatic`; `worker` runs Celery only.
+- Static assets are aligned through `/django_static/` in Nginx + Django.
+- Frontend production build uses committed lockfile with `npm ci`.
+- Compose startup uses required env var fail-fast checks.
+- Frontend protected pages now enforce auth routing before API calls.
 
-### 🛡️ Robustness & Audit (New in v2.2)
-- **FASTA Validation**: Strict checks for invalid characters and duplicates.
-- **Audit Logs**: Track user actions (Create/Update/Delete) for security compliance.
-- **PDF Export**: Save analysis reports (BLAST, Sequence Analysis) as PDF.
-- **UI Enhancements**: Dark Mode support and new Dashboard statistics.
+## Core Features
 
-### 🧪 Advanced Bioinformatics (New in v2.3)
-- **Primer Design**: Design primers for PCR using Primer3 (with 5 pairs generated).
-- **Antibody Annotation**: Annotate and highlight CDRs in antibody sequences (IMGT/KABAT schemes).
-
-### 🧬 Bioinformatics Tools
-- **Peptide Calculator**: Calculate molecular weight, pI, and net charge of peptide sequences.
-- **Sequence Analysis**: Analyze DNA/Protein sequences (GC content, melting temp, etc.).
-- **BLAST Search**: Run local BLASTP searches against custom databases (e.g., SwissProt, PDB).
-- **MSA Viewer**: Visualize ClustalW/MAFFT alignment results with conservation highlighting.
+- Project management with private/public access and request/approval workflow.
+- Sequence analysis, peptide calculator, BLAST search, and MSA workflows.
+- Primer design and antibody annotation tools.
+- JWT-based auth with refresh flow.
 
 ## Tech Stack
-- **Backend**: Django, Django REST Framework, Celery, Redis, PostgreSQL.
-- **Frontend**: React, TypeScript, Tailwind CSS, Vite.
-- **Infrastructure**: Docker Compose, Nginx.
+
+- Backend: Django, Django REST Framework, Celery, Redis, PostgreSQL
+- Frontend: React, TypeScript, Tailwind CSS, Vite
+- Infrastructure: Docker Compose, Nginx
 
 ## Quick Start
 
 ### Development
-```bash
-docker-compose up -d --build
-```
-Access frontend at http://localhost:5173
 
-### Production
-See `DEPLOY.md` for detailed deployment instructions.
+```bash
+docker compose up -d --build
+```
+
+Frontend: [http://localhost:5173](http://localhost:5173)
+
+### Beta / Production-Like
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Verify:
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+curl -fsS http://localhost/api/health/
+curl -fsS http://localhost/django_static/admin/css/base.css | head -c 100
+```
+
+## Release Notes for GitHub v2.9
+
+- Recommended release tag: `v2.9.0`
+- Include docs updates (`README.md`, `DEPLOY.md`) in the same release commit.
+- Use production compose file for beta debugging validation before tagging.
+- Container build context excludes common test files in `.dockerignore` to reduce image size.
 
 ## Documentation
-- `docs/iteration_plan_projects.md`: Technical specs for the Project Management module.
-- `docs/iteration_plan_v2.2.md`: Technical specs for Robustness & Audit features.
-- `docs/iteration_plan_v2.3.md`: Technical specs for Advanced Bioinformatics tools.
-- `DEPLOY.md`: Production deployment guide.
-- `docs/beta_test_guide_v2.7.md`: Beta deployment runbook, tester instructions, and feedback template.
+
+- `DEPLOY.md`: v2.9 production deployment guide and release workflow.
+- `docs/execution_checklist_v2.8_v2.9.md`: implementation checklist.
+- `docs/iteration_plan_v2.8.md`: iteration plan and acceptance baseline.
+- `docs/beta_test_guide_v2.7.md`: beta test process and feedback template.

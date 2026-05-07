@@ -45,6 +45,7 @@ npm-debug.log
 yarn-error.log
 package-lock.json
 yarn.lock
+!frontend/package-lock.json
 
 # Frontend Build
 frontend/dist/

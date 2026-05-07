@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -14,7 +14,7 @@ from .serializers import (
     AntibodyAnnotationSerializer
 )
 from .tasks import run_blast_task, run_msa_task
-from .throttles import AnonBurstRateThrottle, AuthenticatedRateThrottle
+from .throttles import TaskPollThrottle
 from .utils import cumulative_calculator, generate_peptides
 from .utils.primer_design import design_primers
 from .utils.antibody_annotation import annotate_antibody
@@ -28,15 +28,14 @@ class AnalysisTaskViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AnalysisTask.objects.all()
     serializer_class = AnalysisTaskSerializer
     lookup_field = 'id'
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TaskPollThrottle]
 
     def list(self, request, *args, **kwargs):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 class BlastTaskView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = BlastTaskCreateSerializer(data=request.data)
@@ -64,8 +63,7 @@ class BlastTaskView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MsaTaskView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = MsaTaskCreateSerializer(data=request.data)
@@ -91,8 +89,7 @@ class MsaTaskView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class PeptideCalcView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = PeptideCalcSerializer(data=request.data)
@@ -108,8 +105,7 @@ class PeptideCalcView(APIView):
 
 class SequenceAnalysisView(APIView):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         """
@@ -134,8 +130,7 @@ class SequenceAnalysisView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class PrimerDesignView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = PrimerDesignSerializer(data=request.data)
@@ -151,8 +146,7 @@ class PrimerDesignView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class AntibodyAnnotationView(APIView):
-    permission_classes = [AllowAny]
-    throttle_classes = [AnonBurstRateThrottle, AuthenticatedRateThrottle]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = AntibodyAnnotationSerializer(data=request.data)

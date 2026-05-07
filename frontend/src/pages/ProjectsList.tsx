@@ -1,21 +1,9 @@
-import React, { useState, useEffect } from "react";
-import axios from "axios";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Folder, Lock, Unlock, Eye, Clock, Plus, X } from "lucide-react";
+import { handleApiError, projectsApi, type Project } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  owner: { username: string };
-  created_at: string;
-  sequences_count: number;
-  is_public: boolean;
-  access_status: "PENDING" | "APPROVED" | "REJECTED" | null;
-  is_allowed: boolean;
-}
 
 export const ProjectsList = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -34,47 +22,46 @@ export const ProjectsList = () => {
   });
   const [createError, setCreateError] = useState("");
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
-      const response = await axios.get("/api/projects/projects/");
-      setProjects(response.data);
+      const response = await projectsApi.list();
+      setProjects(response);
     } catch (error) {
       console.error("Failed to fetch projects", error);
+      showToast(handleApiError(error).message, "error");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    void fetchProjects();
+  }, [fetchProjects]);
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError("");
     try {
-      await axios.post("/api/projects/projects/", newProject);
+      await projectsApi.create(newProject);
       setIsCreateModalOpen(false);
       setNewProject({ name: "", description: "", is_public: false });
-      fetchProjects();
-    } catch (err: any) {
-      setCreateError(
-        err.response?.data?.name?.[0] || "Failed to create project",
-      );
+      await fetchProjects();
+    } catch (error) {
+      setCreateError(handleApiError(error).message || "Failed to create project");
     }
   };
 
   const handleRequestAccess = async (projectId: string) => {
     try {
-      await axios.post("/api/projects/access-requests/", {
-        project: projectId,
-        reason: requestReason || "Requesting access to view sequences.",
-      });
+      await projectsApi.requestAccess(
+        projectId,
+        requestReason || "Requesting access to view sequences.",
+      );
       setRequestingId(null);
       setRequestReason("");
-      fetchProjects(); // Refresh to show pending status
+      await fetchProjects();
     } catch (error) {
-      showToast("Failed to request access", "error");
+      showToast(handleApiError(error).message, "error");
     }
   };
 
@@ -84,7 +71,7 @@ export const ProjectsList = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-800">Projects</h2>
-        {user?.is_staff && (
+        {user && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
             className="bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-primary-700 transition-colors"
@@ -211,9 +198,9 @@ export const ProjectsList = () => {
             </p>
 
             <div className="flex items-center gap-4 text-xs text-slate-400 mb-6">
-              <span>{project.sequences_count} sequences</span>
+              <span>{project.sequences_count ?? 0} sequences</span>
               <span>•</span>
-              <span>By {project.owner.username}</span>
+              <span>By {project.owner?.username || "Unknown"}</span>
             </div>
 
             <div className="border-t border-slate-100 pt-4">
