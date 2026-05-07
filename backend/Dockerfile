@@ -1,35 +1,48 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1.6
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+FROM python:3.11-slim AS builder
 
-# Set work directory
-WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=300
 
-# Install system dependencies
-# Installing mafft instead of muscle
-RUN apt-get update && apt-get install -y \
-    netcat-openbsd \
-    gcc \
-    libpq-dev \
-    ncbi-blast+ \
-    wget \
-    mafft \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    hmmer \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
-COPY requirements.txt /app/
-RUN pip install --upgrade pip && pip install -r requirements.txt
+WORKDIR /build
 
-# Copy project
+COPY requirements.txt .
+RUN pip wheel --retries 8 --wheel-dir=/wheels -r requirements.txt
+
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DEFAULT_TIMEOUT=300
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ncbi-blast+ \
+    mafft \
+    hmmer \
+    libpq5 \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /wheels /wheels
+COPY requirements.txt .
+RUN pip install --no-index --find-links=/wheels -r requirements.txt \
+    && rm -rf /wheels
+
+COPY entrypoint.sh /entrypoint.sh
+COPY entrypoint-worker.sh /entrypoint-worker.sh
+RUN chmod +x /entrypoint.sh /entrypoint-worker.sh
+
 COPY . /app/
-
-# Run entrypoint script (optional, but good practice)
-COPY ./entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

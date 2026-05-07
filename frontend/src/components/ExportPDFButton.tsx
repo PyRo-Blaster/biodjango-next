@@ -4,9 +4,34 @@ import autoTable from "jspdf-autotable";
 import { Download } from "lucide-react";
 import { parseBlastOutput } from "../utils/blastParser";
 
+interface PeptideSequenceSummary {
+  id: string;
+  num_cysteines: number;
+  molecular_weight: number;
+}
+
+interface PeptideSummary {
+  total_sequences_count: number;
+  total_molecular_weight: number;
+  total_isoelectric_point: number | string;
+  extinction_coefficient: number | string;
+}
+
+interface PeptideReportData {
+  total_summary: PeptideSummary;
+  sequences: PeptideSequenceSummary[];
+}
+
+type ExportData = string | PeptideReportData;
+type PdfWithAutoTable = jsPDF & {
+  lastAutoTable?: {
+    finalY: number;
+  };
+};
+
 interface ExportPDFButtonProps {
   type: "BLAST" | "MSA" | "PEPTIDE";
-  data: any; // Raw output string for BLAST, object for others
+  data: ExportData;
   filename?: string;
 }
 
@@ -19,15 +44,22 @@ export const ExportPDFButton: React.FC<ExportPDFButtonProps> = ({
     const doc = new jsPDF();
 
     if (type === "BLAST") {
-      generateBlastReport(doc, data);
+      generateBlastReport(doc, typeof data === "string" ? data : "");
     } else if (type === "PEPTIDE") {
-      generatePeptideReport(doc, data);
+      generatePeptideReport(doc, typeof data === "string" ? null : data);
     }
 
     doc.save(filename);
   };
 
-  const generatePeptideReport = (doc: jsPDF, data: any) => {
+  const generatePeptideReport = (doc: jsPDF, data: PeptideReportData | null) => {
+    if (!data) {
+      doc.setFontSize(12);
+      doc.text("No peptide analysis data available.", 14, 20);
+      return;
+    }
+
+    const pdfDoc = doc as PdfWithAutoTable;
     doc.setFontSize(18);
     doc.text("Sequence Analysis Report", 14, 20);
 
@@ -57,16 +89,17 @@ export const ExportPDFButton: React.FC<ExportPDFButtonProps> = ({
     });
 
     // Detailed Table
-    doc.text("Detailed Analysis", 14, (doc as any).lastAutoTable.finalY + 15);
+    const summaryEndY = pdfDoc.lastAutoTable?.finalY ?? 45;
+    doc.text("Detailed Analysis", 14, summaryEndY + 15);
 
-    const detailsData = data.sequences.map((seq: any) => [
+    const detailsData = data.sequences.map((seq) => [
       seq.id,
       seq.num_cysteines,
       seq.molecular_weight.toFixed(2),
     ]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
+      startY: summaryEndY + 20,
       head: [["Sequence ID", "Cysteines", "Molecular Weight (Da)"]],
       body: detailsData,
       theme: "striped",
@@ -119,7 +152,8 @@ export const ExportPDFButton: React.FC<ExportPDFButtonProps> = ({
     });
 
     // Alignments
-    let yPos = (doc as any).lastAutoTable.finalY + 10;
+    const pdfDoc = doc as PdfWithAutoTable;
+    let yPos = (pdfDoc.lastAutoTable?.finalY ?? 35) + 10;
 
     hits.forEach((hit, index) => {
       if (yPos > 250) {

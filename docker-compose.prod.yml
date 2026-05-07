@@ -1,7 +1,4 @@
-version: '3.8'
-
 services:
-  # Database
   db:
     image: postgres:15-alpine
     volumes:
@@ -9,38 +6,53 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-biodjango}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-biodjango}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # Redis
   redis:
     image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
-  # Backend API (Gunicorn)
   web:
-    build: 
+    build:
       context: ./backend
-      dockerfile: Dockerfile
-    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+    image: biodjango-backend:local
+    pull_policy: never
+    command: >
+      gunicorn config.wsgi:application
+      --bind 0.0.0.0:8000
+      --workers ${GUNICORN_WORKERS:-3}
+      --timeout ${GUNICORN_TIMEOUT:-120}
+      --access-logfile -
+      --error-logfile -
     volumes:
       - static_volume:/app/static
       - ${BLAST_DB_PATH:-./blastdb}:/data/blastdb
     environment:
       - DEBUG=0
-      - SECRET_KEY=${SECRET_KEY:-changeme}
-      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost 127.0.0.1 [::1] web}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS is required}
       - SQL_ENGINE=django.db.backends.postgresql
       - SQL_DATABASE=${POSTGRES_DB:-biodjango}
       - SQL_USER=${POSTGRES_USER:-postgres}
-      - SQL_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - SQL_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SQL_HOST=db
       - SQL_PORT=5432
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
       interval: 10s
@@ -48,40 +60,42 @@ services:
       retries: 5
       start_period: 30s
 
-  # Celery Worker
   worker:
-    build: 
-      context: ./backend
-      dockerfile: Dockerfile
-    command: celery -A config worker -l info
+    image: biodjango-backend:local
+    pull_policy: never
+    entrypoint: ["/entrypoint-worker.sh"]
+    command: celery -A config worker -l info --concurrency=${CELERY_CONCURRENCY:-2}
     volumes:
       - ${BLAST_DB_PATH:-./blastdb}:/data/blastdb
     environment:
       - DEBUG=0
-      - SECRET_KEY=${SECRET_KEY:-changeme}
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY is required}
       - SQL_ENGINE=django.db.backends.postgresql
       - SQL_DATABASE=${POSTGRES_DB:-biodjango}
       - SQL_USER=${POSTGRES_USER:-postgres}
-      - SQL_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - SQL_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SQL_HOST=db
       - SQL_PORT=5432
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+      web:
+        condition: service_healthy
 
-  # Nginx (serves both frontend and proxies API)
   nginx:
     build:
       context: .
       dockerfile: nginx.Dockerfile
+    image: biodjango-nginx:local
+    pull_policy: never
     ports:
       - "80:80"
     volumes:
-      - static_volume:/app/static
+      - static_volume:/app/static:ro
     depends_on:
       web:
         condition: service_healthy

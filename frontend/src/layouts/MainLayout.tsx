@@ -13,6 +13,7 @@ import {
   Sun,
   Moon,
   TestTube,
+  type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "../context/AuthContext";
@@ -24,7 +25,7 @@ const SidebarItem = ({
   label,
 }: {
   to: string;
-  icon: any;
+  icon: LucideIcon;
   label: string;
 }) => {
   const location = useLocation();

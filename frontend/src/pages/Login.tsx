@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { authApi, handleApiError } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { LogIn, Lock, User, AlertCircle } from 'lucide-react';
 
@@ -18,16 +18,13 @@ export const Login = () => {
         setError('');
 
         try {
-            const response = await axios.post('/api/auth/token/', {
-                username,
-                password
-            });
+            const response = await authApi.login(username, password);
             
-            login(response.data.access, response.data.refresh);
+            login(response.access, response.refresh);
             navigate('/');
-        } catch (err: any) {
-            console.error("Login failed", err);
-            setError(err.response?.data?.detail || "Invalid credentials. Please try again.");
+        } catch (error) {
+            console.error("Login failed", error);
+            setError(handleApiError(error).message || "Invalid credentials. Please try again.");
         } finally {
             setIsLoading(false);
         }

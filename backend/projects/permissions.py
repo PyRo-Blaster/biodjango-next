@@ -1,33 +1,45 @@
 from rest_framework import permissions
 
-class IsAdminOrReadOnly(permissions.BasePermission):
-    """
-    Custom permission to only allow admins to edit objects.
-    Read permissions are allowed to any request.
-    """
-    def has_permission(self, request, view):
+
+class IsOwnerOrStaffOrReadOnly(permissions.BasePermission):
+    """Allow writes to project owners or staff while keeping reads open."""
+
+    def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
             return True
-        return request.user and request.user.is_staff
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_staff:
+            return True
+        return getattr(obj, "owner_id", None) == user.id
+
 
 class HasProjectAccess(permissions.BasePermission):
-    """
-    Custom permission to handle project access.
-    - Admins can do everything.
-    - Allowed users can view (GET).
-    - Others are denied.
-    """
-    def has_object_permission(self, request, view, obj):
-        # Admins always have access
-        if request.user.is_staff:
-            return True
-        
-        # Check if project is public (future proofing)
-        if hasattr(obj, 'is_public') and obj.is_public:
-            return request.method in permissions.SAFE_METHODS
+    """Allow project reads for staff, owners, allow-listed users, or public."""
 
-        # Check if user is in allowed_users
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_staff:
+            return True
         if request.method in permissions.SAFE_METHODS:
-            return obj.allowed_users.filter(id=request.user.id).exists()
-            
+            if getattr(obj, "owner_id", None) == user.id:
+                return True
+            if getattr(obj, "is_public", False):
+                return True
+            return obj.allowed_users.filter(id=user.id).exists()
         return False
+
+
+class CanReviewAccessRequest(permissions.BasePermission):
+    """Allow access request review to staff or the owning PI."""
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        return bool(
+            user
+            and user.is_authenticated
+            and (user.is_staff or obj.project.owner_id == user.id)
+        )

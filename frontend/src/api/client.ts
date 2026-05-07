@@ -9,23 +9,6 @@ export const apiClient = axios.create({
   },
 });
 
-const PUBLIC_API_PREFIXES = ['/analysis/', '/auth/', '/health/'];
-
-function normalizePath(url: string | undefined): string {
-  if (!url) return '';
-  try {
-    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
-    return new URL(url, base).pathname;
-  } catch {
-    return url;
-  }
-}
-
-function isPublicPath(url: string | undefined): boolean {
-  const path = normalizePath(url);
-  return PUBLIC_API_PREFIXES.some((prefix) => path.startsWith(prefix));
-}
-
 function parseRetryAfter(value: unknown): number | undefined {
   if (typeof value === 'string') {
     const parsed = parseInt(value, 10);
@@ -52,14 +35,9 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config;
-    const requestUrl = originalRequest?.url;
     const status = error.response?.status;
 
     if (status === 429) {
-      return Promise.reject(error);
-    }
-
-    if (status === 401 && isPublicPath(requestUrl)) {
       return Promise.reject(error);
     }
 

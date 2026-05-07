@@ -1,72 +1,66 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Upload, FileText, Download } from "lucide-react";
+import {
+  apiClient,
+  handleApiError,
+  projectsApi,
+  type ProjectDetail as ProjectDetailData,
+  type Sequence,
+} from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import clsx from "clsx";
 
-interface Sequence {
-  id: string;
-  name: string;
-  sequence: string;
-  metadata: any;
-  created_at: string;
-}
-
-interface ProjectDetail {
-  id: string;
-  name: string;
-  description: string;
-  is_allowed: boolean;
-}
-
 export const ProjectDetail = () => {
   const { id } = useParams<{ id: string }>();
-  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [project, setProject] = useState<ProjectDetailData | null>(null);
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const { user } = useAuth();
   const { showToast } = useToast();
 
-  const fetchDetails = async () => {
-    try {
-      const projRes = await axios.get(`/api/projects/projects/${id}/`);
-      setProject(projRes.data);
-
-      const seqRes = await axios.get(
-        `/api/projects/sequences/?project_id=${id}`,
-      );
-      setSequences(seqRes.data);
-    } catch (error) {
-      console.error("Failed to fetch details", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (id) fetchDetails();
-  }, [id]);
+    if (!id) return;
+    const loadDetails = async () => {
+      try {
+        const projectData = await projectsApi.get(id);
+        setProject(projectData);
+
+        const seqRes = await apiClient.get<Sequence[]>(
+          `/projects/sequences/?project_id=${id}`,
+        );
+        setSequences(seqRes.data);
+      } catch (error) {
+        console.error("Failed to fetch details", error);
+        showToast(handleApiError(error).message, "error");
+        setProject(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadDetails();
+  }, [id, showToast]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !id) return;
 
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      await axios.post(`/api/projects/projects/${id}/upload_fasta/`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await projectsApi.uploadFasta(id, file);
       showToast("Upload successful!", "success");
-      fetchDetails();
+      const projectData = await projectsApi.get(id);
+      setProject(projectData);
+      const seqRes = await apiClient.get<Sequence[]>(
+        `/projects/sequences/?project_id=${id}`,
+      );
+      setSequences(seqRes.data);
     } catch (error) {
       console.error("Upload failed", error);
-      showToast("Upload failed. Please check the file format.", "error");
+      showToast(handleApiError(error).message, "error");
     } finally {
       setIsUploading(false);
     }
@@ -92,6 +86,10 @@ export const ProjectDetail = () => {
   if (isLoading) return <div>Loading...</div>;
   if (!project) return <div>Project not found or access denied.</div>;
 
+  const canUpload = Boolean(
+    user?.is_staff || (project.owner && project.owner.username === user?.username),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4 mb-6">
@@ -107,7 +105,7 @@ export const ProjectDetail = () => {
         </div>
       </div>
 
-      {user?.is_staff && (
+      {canUpload && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="font-semibold mb-4 flex items-center gap-2">
             <Upload className="w-5 h-5 text-primary-600" />

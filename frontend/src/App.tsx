@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import { AuthProvider } from "./context/AuthContext";
+import { useAuth } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { Layout } from "./layouts/MainLayout";
@@ -58,6 +59,20 @@ function LayoutShell() {
   );
 }
 
+function RequireAuth({ children }: { children: JSX.Element }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <PageLoader />;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <ThemeProvider>
@@ -68,17 +83,77 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route element={<LayoutShell />}>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/projects" element={<ProjectsList />} />
-              <Route path="/projects/:id" element={<ProjectDetail />} />
-              <Route path="/admin-dashboard" element={<AdminDashboard />} />
-              <Route path="/sequence-analysis" element={<SequenceAnalysis />} />
-              <Route path="/peptide-calc" element={<PeptideCalculator />} />
-              <Route path="/blast" element={<Blast />} />
-              <Route path="/msa" element={<MSA />} />
-              <Route path="/primer-design" element={<PrimerDesign />} />
+              <Route
+                path="/projects"
+                element={
+                  <RequireAuth>
+                    <ProjectsList />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/projects/:id"
+                element={
+                  <RequireAuth>
+                    <ProjectDetail />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/admin-dashboard"
+                element={
+                  <RequireAuth>
+                    <AdminDashboard />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/sequence-analysis"
+                element={
+                  <RequireAuth>
+                    <SequenceAnalysis />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/peptide-calc"
+                element={
+                  <RequireAuth>
+                    <PeptideCalculator />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/blast"
+                element={
+                  <RequireAuth>
+                    <Blast />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/msa"
+                element={
+                  <RequireAuth>
+                    <MSA />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/primer-design"
+                element={
+                  <RequireAuth>
+                    <PrimerDesign />
+                  </RequireAuth>
+                }
+              />
               <Route
                 path="/antibody-annotation"
-                element={<AntibodyAnnotation />}
+                element={
+                  <RequireAuth>
+                    <AntibodyAnnotation />
+                  </RequireAuth>
+                }
               />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

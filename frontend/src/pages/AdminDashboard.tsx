@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import axios from "axios";
+import { useCallback, useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
 import clsx from "clsx";
+import { apiClient, handleApiError } from "../api";
 import { useToast } from "../context/ToastContext";
 
 interface Request {
@@ -21,7 +21,7 @@ interface AuditLog {
   object_id: string;
   ip_address: string;
   timestamp: string;
-  details: any;
+  details: Record<string, unknown> | null;
 }
 
 export const AdminDashboard = () => {
@@ -31,23 +31,25 @@ export const AdminDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { showToast } = useToast();
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     try {
-      const response = await axios.get("/api/projects/access-requests/");
+      const response = await apiClient.get<Request[]>("/projects/access-requests/");
       setRequests(response.data);
     } catch (error) {
       console.error("Failed to fetch requests", error);
+      showToast(handleApiError(error).message, "error");
     }
-  };
+  }, [showToast]);
 
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = useCallback(async () => {
     try {
-      const response = await axios.get("/api/core/audit-logs/");
+      const response = await apiClient.get<AuditLog[]>("/core/audit-logs/");
       setAuditLogs(response.data);
     } catch (error) {
       console.error("Failed to fetch audit logs", error);
+      showToast(handleApiError(error).message, "error");
     }
-  };
+  }, [showToast]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -55,17 +57,17 @@ export const AdminDashboard = () => {
       await Promise.all([fetchRequests(), fetchAuditLogs()]);
       setIsLoading(false);
     };
-    loadData();
-  }, []);
+    void loadData();
+  }, [fetchAuditLogs, fetchRequests]);
 
   const handleReview = async (id: string, status: "APPROVED" | "REJECTED") => {
     try {
-      await axios.patch(`/api/projects/access-requests/${id}/review/`, {
+      await apiClient.patch(`/projects/access-requests/${id}/review/`, {
         status,
       });
-      fetchRequests(); // Refresh requests
+      await fetchRequests();
     } catch (error) {
-      showToast("Failed to update status", "error");
+      showToast(handleApiError(error).message, "error");
     }
   };
 
@@ -240,7 +242,9 @@ export const AdminDashboard = () => {
                     className="px-6 py-4 text-slate-500 text-xs max-w-xs truncate"
                     title={JSON.stringify(log.details, null, 2)}
                   >
-                    {log.details?.name || JSON.stringify(log.details)}
+                    {typeof log.details?.name === "string"
+                      ? log.details.name
+                      : JSON.stringify(log.details)}
                   </td>
                 </tr>
               ))}

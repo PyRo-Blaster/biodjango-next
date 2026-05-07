@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { authApi, handleApiError } from '../api';
 import { UserPlus, Lock, User, Mail, AlertCircle } from 'lucide-react';
 
 export const Register = () => {
@@ -29,23 +29,16 @@ export const Register = () => {
         setError('');
 
         try {
-            await axios.post('/api/auth/register/', {
+            await authApi.register({
                 username: formData.username,
                 email: formData.email,
                 password: formData.password,
                 password_confirm: formData.password_confirm
             });
-            // On success, redirect to login
             navigate('/login');
-        } catch (err: any) {
-            console.error("Registration failed", err);
-            // DRF returns errors like { username: ["error"], password: ["error"] }
-            const errorData = err.response?.data;
-            let errorMsg = "Registration failed.";
-            if (typeof errorData === 'object') {
-                errorMsg = Object.values(errorData).flat().join(' ');
-            }
-            setError(errorMsg);
+        } catch (error) {
+            console.error("Registration failed", error);
+            setError(handleApiError(error).message || "Registration failed.");
         } finally {
             setIsLoading(false);
         }

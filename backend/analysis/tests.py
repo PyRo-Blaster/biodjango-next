@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -54,9 +54,7 @@ class AnalysisAPITests(TestCase):
             password="password123",
         )
 
-    @patch("analysis.views.run_blast_task.delay")
-    def test_anonymous_blast_submit(self, mocked_delay):
-        mocked_delay.return_value = None
+    def test_anonymous_blast_submit_requires_authentication(self):
         response = self.client.post(
             "/api/analysis/blast/",
             {
@@ -66,21 +64,12 @@ class AnalysisAPITests(TestCase):
             },
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
-
-    @patch("analysis.views.run_msa_task.delay")
-    def test_anonymous_msa_submit(self, mocked_delay):
-        mocked_delay.return_value = None
-        response = self.client.post(
-            "/api/analysis/msa/",
-            {"sequence": ">a\nAAAA\n>b\nAAAT"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     @patch("analysis.views.run_blast_task.delay")
     def test_blast_submit_returns_503_when_queue_unavailable(self, mocked_delay):
         mocked_delay.side_effect = RuntimeError("broker down")
+        self.client.force_authenticate(user=self.user)
         response = self.client.post(
             "/api/analysis/blast/",
             {
@@ -98,6 +87,7 @@ class AnalysisAPITests(TestCase):
     @patch("analysis.views.run_msa_task.delay")
     def test_msa_submit_returns_503_when_queue_unavailable(self, mocked_delay):
         mocked_delay.side_effect = RuntimeError("broker down")
+        self.client.force_authenticate(user=self.user)
         response = self.client.post(
             "/api/analysis/msa/",
             {"sequence": ">a\nAAAA\n>b\nAAAT"},
@@ -108,50 +98,22 @@ class AnalysisAPITests(TestCase):
         task = AnalysisTask.objects.get(task_type="MSA")
         self.assertEqual(task.status, "FAILURE")
 
-    def test_anonymous_primer_design_submit(self):
+    def test_anonymous_primer_design_submit_requires_authentication(self):
         response = self.client.post(
             "/api/analysis/primer-design/",
             {"sequence": "ATCG" * 30, "tm_opt": 60.0},
             format="json",
         )
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_analysis_task_list_is_disabled(self):
+        self.client.force_authenticate(user=self.user)
         response = self.client.get("/api/analysis/tasks/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_project_endpoint_still_requires_authentication(self):
-        response = self.client.get("/api/projects/projects/")
+        response = self.client.get("/api/projects/")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    @patch("analysis.views.run_blast_task.delay")
-    def test_anonymous_requests_are_throttled(self, mocked_delay):
-        mocked_delay.return_value = None
-        payload = {
-            "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKRQQIAAALEHHHHHH",
-            "evalue": 0.001,
-            "db": "swissprot",
-        }
-        statuses = [
-            self.client.post("/api/analysis/blast/", payload, format="json").status_code
-            for _ in range(7)
-        ]
-        self.assertEqual(statuses[-1], status.HTTP_429_TOO_MANY_REQUESTS)
-
-    @patch("analysis.views.run_blast_task.delay")
-    def test_throttled_response_contains_retry_after(self, mocked_delay):
-        mocked_delay.return_value = None
-        payload = {
-            "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKRQQIAAALEHHHHHH",
-            "evalue": 0.001,
-            "db": "swissprot",
-        }
-        response = None
-        for _ in range(7):
-            response = self.client.post("/api/analysis/blast/", payload, format="json")
-        self.assertIsNotNone(response)
-        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        self.assertIn("Retry-After", response.headers)
 
     @patch("analysis.views.run_blast_task.delay")
     def test_authenticated_user_uses_higher_quota(self, mocked_delay):
@@ -167,3 +129,32 @@ class AnalysisAPITests(TestCase):
             for _ in range(7)
         ]
         self.assertTrue(all(code == status.HTTP_202_ACCEPTED for code in statuses))
+
+    @override_settings(
+        REST_FRAMEWORK={
+            "DEFAULT_PERMISSION_CLASSES": [
+                "rest_framework.permissions.IsAuthenticated",
+            ],
+            "DEFAULT_AUTHENTICATION_CLASSES": [
+                "rest_framework_simplejwt.authentication.JWTAuthentication",
+                "rest_framework.authentication.BasicAuthentication",
+            ],
+            "DEFAULT_THROTTLE_CLASSES": [
+                "rest_framework.throttling.UserRateThrottle",
+            ],
+            "DEFAULT_THROTTLE_RATES": {
+                "user": "5/min",
+                "user_burst": "5/min",
+                "task_poll": "200/min",
+            },
+        }
+    )
+    def test_authenticated_task_poll_uses_dedicated_scope(self):
+        self.client.force_authenticate(user=self.user)
+        task = AnalysisTask.objects.create(task_type="BLAST")
+        statuses = [
+            self.client.get(f"/api/analysis/tasks/{task.id}/").status_code
+            for _ in range(100)
+        ]
+        self.assertNotIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses)
+        self.assertTrue(all(code == status.HTTP_200_OK for code in statuses))

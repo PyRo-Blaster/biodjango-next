@@ -1,9 +1,5 @@
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.throttling import UserRateThrottle
 
 
-class AnonBurstRateThrottle(AnonRateThrottle):
-    scope = "anon_burst"
-
-
-class AuthenticatedRateThrottle(UserRateThrottle):
-    scope = "user_burst"
+class TaskPollThrottle(UserRateThrottle):
+    scope = "task_poll"
