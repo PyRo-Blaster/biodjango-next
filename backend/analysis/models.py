@@ -6,7 +6,6 @@ class AnalysisTask(models.Model):
         ('BLAST', 'BLAST'),
         ('IGBLAST', 'IgBLAST'),
         ('MSA', 'Multiple Sequence Alignment'),
-        ('PEPTIDE_CALC', 'Peptide Calculator'),
     ]
 
     STATUS_CHOICES = [
@@ -23,9 +22,6 @@ class AnalysisTask(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     result = models.JSONField(null=True, blank=True)
     error_message = models.TextField(null=True, blank=True)
-    
-    # Optional: Link to a project or user if needed
-    # project = models.ForeignKey('core.Project', on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
         return f"{self.task_type} - {self.id} ({self.status})"

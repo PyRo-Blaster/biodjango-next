@@ -24,12 +24,10 @@ export const AntibodyAnnotation = () => {
     const [sequence, setSequence] = useState('');
     const [scheme, setScheme] = useState('imgt');
     const [result, setResult] = useState<AnnotationResult | null>(null);
-    const [error, setError] = useState('');
     const { loading, errorInfo, execute, resetError } = useAnalysisTool<AnnotationResult>();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
         setResult(null);
         resetError();
 
@@ -112,12 +110,6 @@ export const AntibodyAnnotation = () => {
 
                 {/* Results */}
                 <div className="lg:col-span-2">
-                    {error && (
-                        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800 mb-4">
-                            {error}
-                        </div>
-                    )}
-
                     {result && (
                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
@@ -160,7 +152,7 @@ export const AntibodyAnnotation = () => {
                         </div>
                     )}
 
-                    {!result && !loading && !error && (
+                    {!result && !loading && !errorInfo && (
                         <div className="h-full flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
                             Enter antibody sequence to identify CDRs
                         </div>
