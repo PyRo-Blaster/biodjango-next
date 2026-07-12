@@ -2,7 +2,7 @@ from rest_framework import viewsets, permissions, status, parsers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from .models import Project, ProteinSequence, AccessRequest
 from .serializers import ProjectSerializer, ProteinSequenceSerializer, AccessRequestSerializer
@@ -18,9 +18,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Project.objects.select_related("owner").prefetch_related(
-            "allowed_users",
-            "access_requests",
+        return (
+            Project.objects.select_related("owner")
+            .prefetch_related("allowed_users", "access_requests")
+            .annotate(sequences_count=Count("sequences"))
         )
 
     def perform_create(self, serializer):
@@ -41,22 +42,22 @@ class ProjectViewSet(viewsets.ModelViewSet):
         Get project statistics.
         """
         user = request.user
-        
-        # Simple stats for dashboard
         total_projects = Project.objects.count()
         total_sequences = ProteinSequence.objects.count()
-        
-        if user.is_staff:
-            recent_projects = Project.objects.all().order_by('-created_at')[:5]
-        else:
-            recent_projects = Project.objects.filter(
+
+        visible = self.get_queryset()
+        if not user.is_staff:
+            visible = visible.filter(
                 Q(owner=user) | Q(is_public=True) | Q(allowed_users=user)
-            ).distinct().order_by('-created_at')[:5]
+            ).distinct()
+        recent_projects = visible.order_by('-created_at')[:5]
 
         return Response({
             "total_projects": total_projects,
             "total_sequences": total_sequences,
-            "recent_projects": ProjectSerializer(recent_projects, many=True).data
+            "recent_projects": ProjectSerializer(
+                recent_projects, many=True, context={'request': request}
+            ).data,
         })
 
     @action(detail=True, methods=['post'], parser_classes=[parsers.MultiPartParser])
@@ -125,11 +126,14 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        base = AccessRequest.objects.select_related(
+            "user", "project", "project__owner"
+        )
         if user.is_staff:
-            return AccessRequest.objects.all().order_by('-created_at')
+            return base.order_by('-created_at')
         if self.action == "review":
-            return AccessRequest.objects.all().order_by("-created_at")
-        return AccessRequest.objects.filter(
+            return base.order_by("-created_at")
+        return base.filter(
             Q(user=user) | Q(project__owner=user)
         ).distinct().order_by("-created_at")
 

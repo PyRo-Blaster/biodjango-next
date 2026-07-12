@@ -137,7 +137,6 @@ class AnalysisAPITests(TestCase):
             ],
             "DEFAULT_AUTHENTICATION_CLASSES": [
                 "rest_framework_simplejwt.authentication.JWTAuthentication",
-                "rest_framework.authentication.BasicAuthentication",
             ],
             "DEFAULT_THROTTLE_CLASSES": [
                 "rest_framework.throttling.UserRateThrottle",
