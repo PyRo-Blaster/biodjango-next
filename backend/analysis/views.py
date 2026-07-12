@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,12 +6,12 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import logging
 from .models import AnalysisTask
 from .serializers import (
-    AnalysisTaskSerializer, 
-    BlastTaskCreateSerializer, 
-    MsaTaskCreateSerializer, 
+    AnalysisTaskSerializer,
+    BlastTaskCreateSerializer,
+    MsaTaskCreateSerializer,
     PeptideCalcSerializer,
     PrimerDesignSerializer,
-    AntibodyAnnotationSerializer
+    AntibodyAnnotationSerializer,
 )
 from .tasks import run_blast_task, run_msa_task
 from .throttles import TaskPollThrottle
@@ -21,18 +21,16 @@ from .utils.antibody_annotation import annotate_antibody
 
 logger = logging.getLogger(__name__)
 
-class AnalysisTaskViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    View to retrieve task status and results.
-    """
+
+class AnalysisTaskRetrieveView(generics.RetrieveAPIView):
+    """Retrieve status and result for a single analysis task."""
+
     queryset = AnalysisTask.objects.all()
     serializer_class = AnalysisTaskSerializer
     lookup_field = 'id'
+    lookup_url_kwarg = 'id'
     permission_classes = [IsAuthenticated]
     throttle_classes = [TaskPollThrottle]
-
-    def list(self, request, *args, **kwargs):
-        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 class BlastTaskView(APIView):
     permission_classes = [IsAuthenticated]

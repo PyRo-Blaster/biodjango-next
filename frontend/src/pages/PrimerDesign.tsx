@@ -25,12 +25,10 @@ export const PrimerDesign = () => {
   const [productSize, setProductSize] = useState("100-300");
   const [tmOpt, setTmOpt] = useState(60.0);
   const [result, setResult] = useState<{ primers: PrimerPair[] } | null>(null);
-  const [error, setError] = useState("");
   const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ primers: PrimerPair[] }>();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setResult(null);
     resetError();
 
@@ -130,12 +128,6 @@ export const PrimerDesign = () => {
 
         {/* Results */}
         <div className="lg:col-span-2">
-          {error && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800 mb-4">
-              {error}
-            </div>
-          )}
-
           {result && result.primers && (
             <div className="space-y-4">
               {result.primers.map((pair, idx) => (
@@ -168,7 +160,7 @@ export const PrimerDesign = () => {
             </div>
           )}
 
-          {!result && !loading && !error && (
+          {!result && !loading && !errorInfo && (
             <div className="h-full flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
               Enter sequence and parameters to generate primers
             </div>
