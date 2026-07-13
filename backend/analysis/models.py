@@ -6,6 +6,9 @@ class AnalysisTask(models.Model):
         ('BLAST', 'BLAST'),
         ('IGBLAST', 'IgBLAST'),
         ('MSA', 'Multiple Sequence Alignment'),
+        ('PEPTIDE_CALC', 'Peptide Calculator'),
+        ('PRIMER_DESIGN', 'Primer Design'),
+        ('ANTIBODY_ANNOTATION', 'Antibody Annotation'),
     ]
 
     STATUS_CHOICES = [

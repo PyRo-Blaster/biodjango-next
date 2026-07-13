@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { AlertCircle, ShieldCheck, Info } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, Info, RefreshCw, ShieldCheck } from 'lucide-react';
 import clsx from 'clsx';
-import { apiClient } from '../api/client';
+import { apiClient, handleApiError } from '../api/client';
 import { RateLimitAlert } from '../components/RateLimitAlert';
 import { useAnalysisTool } from '../hooks/useAnalysisTool';
 
@@ -20,29 +20,76 @@ interface AnnotationResult {
     numbering: Record<string, string>;
 }
 
+interface TaskStatus {
+    id: string;
+    status: 'PENDING' | 'STARTED' | 'SUCCESS' | 'FAILURE';
+    error_message?: string;
+}
+
+interface TaskResult extends TaskStatus {
+    result?: AnnotationResult;
+}
+
 export const AntibodyAnnotation = () => {
     const [sequence, setSequence] = useState('');
     const [scheme, setScheme] = useState('imgt');
+    const [taskId, setTaskId] = useState<string | null>(null);
+    const [taskStatus, setTaskStatus] = useState<string | null>(null);
     const [result, setResult] = useState<AnnotationResult | null>(null);
-    const { loading, errorInfo, execute, resetError } = useAnalysisTool<AnnotationResult>();
+    const [error, setError] = useState<string | null>(null);
+    const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskStatus>();
+
+    useEffect(() => {
+        let intervalId: ReturnType<typeof setInterval> | undefined;
+
+        if (taskId && taskStatus !== 'SUCCESS' && taskStatus !== 'FAILURE') {
+            intervalId = setInterval(async () => {
+                try {
+                    const response = await apiClient.get<TaskStatus>(`/analysis/tasks/${taskId}/`);
+                    setTaskStatus(response.data.status);
+
+                    if (response.data.status === 'SUCCESS') {
+                        const full = await apiClient.get<TaskResult>(`/analysis/tasks/${taskId}/result/`);
+                        setResult(full.data.result ?? null);
+                    } else if (response.data.status === 'FAILURE') {
+                        setError(response.data.error_message || 'Task failed');
+                    }
+                } catch (err) {
+                    const parsed = handleApiError(err);
+                    setError(parsed.message);
+                    setTaskId(null);
+                }
+            }, 2000);
+        }
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [taskId, taskStatus]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setResult(null);
+        setError(null);
+        setTaskId(null);
+        setTaskStatus(null);
         resetError();
 
-        const response = await execute(async () => {
-            const resultData = await apiClient.post<AnnotationResult>('/analysis/antibody-annotation/', {
+        const created = await execute(async () => {
+            const response = await apiClient.post<TaskStatus>('/analysis/antibody-annotation/', {
                 sequence,
-                scheme
+                scheme,
             });
-            return resultData.data;
+            return response.data;
         });
 
-        if (response) {
-            setResult(response);
+        if (created?.id) {
+            setTaskId(created.id);
+            setTaskStatus('PENDING');
         }
     };
+
+    const busy = Boolean(taskId) && taskStatus !== 'SUCCESS' && taskStatus !== 'FAILURE';
 
     return (
         <div className="space-y-6">
@@ -100,16 +147,28 @@ export const AntibodyAnnotation = () => {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || busy}
                             className="w-full py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                         >
-                            {loading ? 'Annotating...' : 'Annotate CDRs'}
+                            {loading || busy ? 'Annotating...' : 'Annotate CDRs'}
                         </button>
                     </form>
                 </div>
 
                 {/* Results */}
                 <div className="lg:col-span-2">
+                    {busy && (
+                        <div className="flex flex-col items-center justify-center text-primary-600 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
+                            <RefreshCw className="w-8 h-8 mb-2 animate-spin" />
+                            <p className="text-sm">Status: {taskStatus}</p>
+                        </div>
+                    )}
+                    {taskStatus === 'FAILURE' && error && (
+                        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800 mb-4 flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                            <span>{error}</span>
+                        </div>
+                    )}
                     {result && (
                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
@@ -152,7 +211,7 @@ export const AntibodyAnnotation = () => {
                         </div>
                     )}
 
-                    {!result && !loading && !errorInfo && (
+                    {!result && !loading && !busy && !errorInfo && taskStatus !== 'FAILURE' && (
                         <div className="h-full flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
                             Enter antibody sequence to identify CDRs
                         </div>

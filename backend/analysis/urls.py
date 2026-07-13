@@ -1,17 +1,19 @@
 from django.urls import path
 from .views import (
+    AnalysisTaskResultView,
     AnalysisTaskRetrieveView,
+    AntibodyAnnotationView,
     BlastTaskView,
     MsaTaskView,
     PeptideCalcView,
-    SequenceAnalysisView,
     PrimerDesignView,
-    AntibodyAnnotationView,
+    SequenceAnalysisView,
 )
 
 
 urlpatterns = [
     path('tasks/<uuid:id>/', AnalysisTaskRetrieveView.as_view(), name='task-detail'),
+    path('tasks/<uuid:id>/result/', AnalysisTaskResultView.as_view(), name='task-result'),
     path('blast/', BlastTaskView.as_view(), name='run-blast'),
     path('msa/', MsaTaskView.as_view(), name='run-msa'),
     path('peptide-calc/', PeptideCalcView.as_view(), name='peptide-calc'),
