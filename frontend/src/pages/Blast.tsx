@@ -12,13 +12,16 @@ import { ExportPDFButton } from "../components/ExportPDFButton";
 import { RateLimitAlert } from "../components/RateLimitAlert";
 import { useAnalysisTool } from "../hooks/useAnalysisTool";
 
-interface TaskResponse {
+interface TaskStatus {
   id: string;
   status: "PENDING" | "STARTED" | "SUCCESS" | "FAILURE";
+  error_message?: string;
+}
+
+interface TaskResult extends TaskStatus {
   result?: {
     output: string;
   };
-  error_message?: string;
 }
 
 export const Blast = () => {
@@ -30,24 +33,22 @@ export const Blast = () => {
   const [taskStatus, setTaskStatus] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskResponse>();
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskStatus>();
 
-  // Polling effect
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
 
     if (taskId && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE") {
       intervalId = setInterval(async () => {
         try {
-          const response = await apiClient.get<TaskResponse>(`/analysis/tasks/${taskId}/`);
+          const response = await apiClient.get<TaskStatus>(`/analysis/tasks/${taskId}/`);
           setTaskStatus(response.data.status);
 
-          if (response.data.status === "SUCCESS" && response.data.result) {
-            setResult(response.data.result.output);
-            // setTaskId(null); // Keep taskId to show result
+          if (response.data.status === "SUCCESS") {
+            const full = await apiClient.get<TaskResult>(`/analysis/tasks/${taskId}/result/`);
+            setResult(full.data.result?.output ?? "");
           } else if (response.data.status === "FAILURE") {
             setError(response.data.error_message || "Task failed");
-            // setTaskId(null); // Keep taskId to show error
           }
         } catch (err) {
           const parsed = handleApiError(err);
@@ -71,7 +72,7 @@ export const Blast = () => {
     resetError();
 
     const created = await execute(async () => {
-      const response = await apiClient.post<TaskResponse>("/analysis/blast/", {
+      const response = await apiClient.post<TaskStatus>("/analysis/blast/", {
         sequence,
         evalue: parseFloat(evalue),
         db,
