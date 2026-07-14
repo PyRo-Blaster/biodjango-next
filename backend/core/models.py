@@ -5,16 +5,18 @@ from django.contrib.auth.models import User
 
 
 class AuditLog(models.Model):
-    ACTION_CHOICES = (
-        ('CREATE', 'Create'),
-        ('UPDATE', 'Update'),
-        ('DELETE', 'Delete'),
-        ('LOGIN', 'Login'),
-        ('EXPORT', 'Export'),
-    )
+    class Action(models.TextChoices):
+        CREATE = 'CREATE', 'Create'
+        UPDATE = 'UPDATE', 'Update'
+        DELETE = 'DELETE', 'Delete'
+        LOGIN = 'LOGIN', 'Login'
+        EXPORT = 'EXPORT', 'Export'
+        APPROVE = 'APPROVE', 'Approve'
+        REJECT = 'REJECT', 'Reject'
+        SUBMIT = 'SUBMIT', 'Submit'
 
     actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='audit_logs')
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    action = models.CharField(max_length=20, choices=Action.choices)
 
     content_type = models.ForeignKey(ContentType, on_delete=models.SET_NULL, null=True)
     object_id = models.CharField(max_length=50, null=True)

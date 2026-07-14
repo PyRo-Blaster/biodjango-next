@@ -235,6 +235,45 @@ class AnalysisAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         self.assertEqual(response.data["task_type"], "ANTIBODY_ANNOTATION")
 
+    @patch("analysis.views.run_blast_task.delay")
+    def test_task_submission_records_audit_row(self, mocked_delay):
+        from core.models import AuditLog
+
+        mocked_delay.return_value = None
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/blast/",
+            {
+                "sequence": "MKTAYIAKQR",
+                "evalue": 0.001,
+                "db": "swissprot",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        entry = AuditLog.objects.get(
+            action=AuditLog.Action.SUBMIT,
+            object_id=response.data["id"],
+        )
+        self.assertEqual(entry.actor, self.user)
+        self.assertEqual(entry.details["task_type"], "BLAST")
+
+    @patch("analysis.views.run_blast_task.delay")
+    def test_failed_dispatch_does_not_record_submit(self, mocked_delay):
+        from core.models import AuditLog
+
+        mocked_delay.side_effect = RuntimeError("broker down")
+        self.client.force_authenticate(user=self.user)
+        self.client.post(
+            "/api/analysis/blast/",
+            {"sequence": "MKTAYIAKQR", "evalue": 0.001, "db": "swissprot"},
+            format="json",
+        )
+        # No SUBMIT row when the dispatch failed.
+        self.assertFalse(
+            AuditLog.objects.filter(action=AuditLog.Action.SUBMIT).exists()
+        )
+
 
 class AnalysisTaskExecutionTests(TestCase):
     """Verify tasks run inline via ``CELERY_TASK_ALWAYS_EAGER``."""
