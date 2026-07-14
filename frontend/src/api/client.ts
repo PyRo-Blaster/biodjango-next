@@ -9,6 +9,51 @@ export const apiClient = axios.create({
   },
 });
 
+/**
+ * Callbacks the auth context installs on mount so ``client.ts`` can drive
+ * navigation on a refresh failure without a hard page reload, and so token
+ * mutations flow through a single source of truth.
+ */
+export interface AuthSeam {
+  getAccessToken?: () => string | null;
+  getRefreshToken?: () => string | null;
+  setAccessToken?: (token: string) => void;
+  onAuthFailure?: () => void;
+}
+
+let authSeam: AuthSeam | null = null;
+
+export function installAuth(seam: AuthSeam) {
+  authSeam = seam;
+}
+
+function readAccessToken(): string | null {
+  const fromSeam = authSeam?.getAccessToken?.();
+  if (fromSeam !== undefined && fromSeam !== null) return fromSeam;
+  return localStorage.getItem('access_token');
+}
+
+function readRefreshToken(): string | null {
+  const fromSeam = authSeam?.getRefreshToken?.();
+  if (fromSeam !== undefined && fromSeam !== null) return fromSeam;
+  return localStorage.getItem('refresh_token');
+}
+
+function persistAccessToken(token: string) {
+  authSeam?.setAccessToken?.(token);
+  localStorage.setItem('access_token', token);
+}
+
+function purgeSessionFallback() {
+  if (authSeam?.onAuthFailure) {
+    authSeam.onAuthFailure();
+    return;
+  }
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  window.location.href = '/login';
+}
+
 function parseRetryAfter(value: unknown): number | undefined {
   if (typeof value === 'string') {
     const parsed = parseInt(value, 10);
@@ -22,7 +67,7 @@ function parseRetryAfter(value: unknown): number | undefined {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('access_token');
+    const token = readAccessToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -41,13 +86,16 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (status === 401 && originalRequest && originalRequest.headers && !originalRequest.headers['X-Retry']) {
-      const refreshToken = localStorage.getItem('refresh_token');
+    if (
+      status === 401 &&
+      originalRequest &&
+      originalRequest.headers &&
+      !originalRequest.headers['X-Retry']
+    ) {
+      const refreshToken = readRefreshToken();
 
       if (!refreshToken) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        purgeSessionFallback();
         return Promise.reject(error);
       }
 
@@ -57,7 +105,7 @@ apiClient.interceptors.response.use(
         });
 
         const { access } = response.data as { access: string };
-        localStorage.setItem('access_token', access);
+        persistAccessToken(access);
 
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${access}`;
@@ -66,9 +114,7 @@ apiClient.interceptors.response.use(
 
         return apiClient(originalRequest);
       } catch (refreshError) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        purgeSessionFallback();
         return Promise.reject(refreshError);
       }
     }
@@ -77,7 +123,22 @@ apiClient.interceptors.response.use(
   }
 );
 
-// API response wrapper
+// -------------------------------------------------------------------------
+// Shared helpers used by the typed api modules
+// -------------------------------------------------------------------------
+
+export interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+/** Read a list endpoint that may be paginated depending on ``ENABLE_PAGINATION``. */
+export function unwrapList<T>(payload: T[] | Paginated<T>): T[] {
+  return Array.isArray(payload) ? payload : payload.results;
+}
+
 export interface ApiResponse<T> {
   data: T;
   success: boolean;
