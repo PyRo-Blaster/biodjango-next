@@ -1,85 +1,64 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Loader2, AlertCircle } from 'lucide-react';
-import { apiClient } from '../api/client';
-import { ExportPDFButton } from '../components/ExportPDFButton';
+import { Upload, FileText, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import { analysisApi } from '../api';
+import type { SequenceAnalysisResult } from '../api';
+import { ExportPDFButton } from '../components/ExportPDFButton';
 import { RateLimitAlert } from '../components/RateLimitAlert';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useAnalysisTool } from '../hooks/useAnalysisTool';
-
-interface AnalysisSummary {
-    sequences: {
-        id: string;
-        num_cysteines: number;
-        molecular_weight: number;
-    }[];
-    total_summary: {
-        total_isoelectric_point: number;
-        total_molecular_weight: number;
-        extinction_coefficient: number;
-        total_sequences_count: number;
-    };
-}
 
 export const SequenceAnalysis = () => {
     const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
     const [file, setFile] = useState<File | null>(null);
     const [textInput, setTextInput] = useState('');
-    const [result, setResult] = useState<AnalysisSummary | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const { loading, errorInfo, execute, resetError } = useAnalysisTool<AnalysisSummary>();
+    const [result, setResult] = useState<SequenceAnalysisResult | null>(null);
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const { loading, errorInfo, execute, resetError } = useAnalysisTool<SequenceAnalysisResult>();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError(null);
+        setValidationError(null);
         setResult(null);
         resetError();
 
         if (activeTab === 'upload' && !file) {
-            setError("Please select a FASTA file.");
+            setValidationError("Please select a FASTA file.");
             return;
         }
         if (activeTab === 'paste' && !textInput.trim()) {
-            setError("Please paste sequence content.");
+            setValidationError("Please paste sequence content.");
             return;
         }
 
-        const formData = new FormData();
+        const response = await execute(() =>
+            analysisApi.runSequenceAnalysis(
+                activeTab === 'upload'
+                    ? { fasta_file: file! }
+                    : { fasta_content: textInput },
+            ),
+        );
 
-        if (activeTab === 'upload' && file) {
-            formData.append('fasta_file', file);
-        } else {
-            formData.append('fasta_content', textInput);
-        }
-
-        const response = await execute(async () => {
-            const resultData = await apiClient.post<AnalysisSummary>('/analysis/sequence-analysis/', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
-            return resultData.data;
-        });
-
-        if (response) {
-            setResult(response);
-        }
+        if (response) setResult(response);
     };
+
+    const bannerMessage = validationError ?? (errorInfo && !errorInfo.isRateLimited ? errorInfo.message : null);
 
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-800">Sequence Analysis</h2>
                 {result && (
-                    <ExportPDFButton 
-                        type="PEPTIDE" 
-                        data={result} 
-                        filename="sequence_analysis_report.pdf" 
+                    <ExportPDFButton
+                        type="PEPTIDE"
+                        data={result}
+                        filename="sequence_analysis_report.pdf"
                     />
                 )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Input Section */}
                 <div className="lg:col-span-1 space-y-6">
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                         <div className="flex border-b border-slate-200">
@@ -135,12 +114,7 @@ export const SequenceAnalysis = () => {
                                 />
                             )}
 
-                            {(error || (errorInfo && !errorInfo.isRateLimited)) && (
-                                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
-                                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                    <span>{error || errorInfo?.message}</span>
-                                </div>
-                            )}
+                            {bannerMessage && <ErrorBanner message={bannerMessage} />}
 
                             <button
                                 type="submit"
@@ -208,10 +182,11 @@ export const SequenceAnalysis = () => {
                             </div>
                         </div>
                     ) : (
-                        <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                            <DnaIcon className="w-16 h-16 mb-4 opacity-20" />
-                            <p>Upload or paste sequences to view analysis results</p>
-                        </div>
+                        <EmptyState
+                            icon={DnaIcon}
+                            message="Upload or paste sequences to view analysis results"
+                            className="h-full min-h-[400px]"
+                        />
                     )}
                 </div>
             </div>
@@ -219,6 +194,6 @@ export const SequenceAnalysis = () => {
     );
 };
 
-const DnaIcon = ({ className }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="M17 6l-2.5-2.5"/><path d="M14 8l-1-1"/><path d="M7 18l2.5 2.5"/><path d="M3.5 14.5l-1 1"/><path d="M20 9l2.5 2.5"/><path d="M6.5 12.5l1 1"/><path d="M16.5 10.5l1 1"/><path d="M10 16l1.5 1.5"/></svg>
+const DnaIcon = (props: { size?: number | string; className?: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={props.size ?? 24} height={props.size ?? 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M2 15c6.667-6 13.333 0 20-6"/><path d="M9 22c1.798-1.998 2.518-3.995 2.807-5.993"/><path d="M15 2c-1.798 1.998-2.518 3.995-2.807 5.993"/><path d="M17 6l-2.5-2.5"/><path d="M14 8l-1-1"/><path d="M7 18l2.5 2.5"/><path d="M3.5 14.5l-1 1"/><path d="M20 9l2.5 2.5"/><path d="M6.5 12.5l1 1"/><path d="M16.5 10.5l1 1"/><path d="M10 16l1.5 1.5"/></svg>
 );

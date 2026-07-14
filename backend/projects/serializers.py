@@ -1,11 +1,9 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
+
+from core.serializers import UserSerializer
+
 from .models import Project, ProteinSequence, AccessRequest
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email']
 
 class ProteinSequenceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -14,7 +12,7 @@ class ProteinSequenceSerializer(serializers.ModelSerializer):
 
 class ProjectSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
-    sequences_count = serializers.IntegerField(source='sequences.count', read_only=True)
+    sequences_count = serializers.SerializerMethodField()
     access_status = serializers.SerializerMethodField()
     is_allowed = serializers.SerializerMethodField()
 
@@ -22,6 +20,12 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = ['id', 'name', 'description', 'created_at', 'owner', 'sequences_count', 'is_public', 'access_status', 'is_allowed']
         read_only_fields = ['created_at', 'owner']
+
+    def get_sequences_count(self, obj):
+        annotated = getattr(obj, "sequences_count", None)
+        if annotated is not None:
+            return annotated
+        return obj.sequences.count()
 
     def _prefetched_access_requests(self, obj):
         return getattr(obj, "_prefetched_objects_cache", {}).get("access_requests")

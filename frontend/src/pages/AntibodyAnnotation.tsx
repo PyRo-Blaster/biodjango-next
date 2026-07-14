@@ -1,50 +1,37 @@
-import React, { useState } from 'react';
-import { AlertCircle, ShieldCheck, Info } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Info, RefreshCw, ShieldCheck } from 'lucide-react';
 import clsx from 'clsx';
-import { apiClient } from '../api/client';
+import { analysisApi } from '../api';
+import type { AntibodyAnnotationResult } from '../api';
 import { RateLimitAlert } from '../components/RateLimitAlert';
+import { EmptyState } from '../components/ui/EmptyState';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { useAnalysisTool } from '../hooks/useAnalysisTool';
-
-interface AnnotationResult {
-    chain_type: string;
-    scheme: string;
-    regions: {
-        FR1: string;
-        CDR1: string;
-        FR2: string;
-        CDR2: string;
-        FR3: string;
-        CDR3: string;
-        FR4: string;
-    };
-    numbering: Record<string, string>;
-}
+import { useTaskPolling } from '../hooks/useTaskPolling';
 
 export const AntibodyAnnotation = () => {
     const [sequence, setSequence] = useState('');
-    const [scheme, setScheme] = useState('imgt');
-    const [result, setResult] = useState<AnnotationResult | null>(null);
-    const [error, setError] = useState('');
-    const { loading, errorInfo, execute, resetError } = useAnalysisTool<AnnotationResult>();
+    const [scheme, setScheme] = useState<'imgt' | 'kabat' | 'chothia'>('imgt');
+    const [taskId, setTaskId] = useState<string | null>(null);
+    const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ id: string }>();
+    const { status, result, error } = useTaskPolling<AntibodyAnnotationResult>(taskId);
+
+    useEffect(() => {
+        if (error) setTaskId(null);
+    }, [error]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError('');
-        setResult(null);
+        setTaskId(null);
         resetError();
 
-        const response = await execute(async () => {
-            const resultData = await apiClient.post<AnnotationResult>('/analysis/antibody-annotation/', {
-                sequence,
-                scheme
-            });
-            return resultData.data;
-        });
-
-        if (response) {
-            setResult(response);
-        }
+        const created = await execute(() =>
+            analysisApi.submitAntibodyAnnotation({ sequence, scheme }),
+        );
+        if (created?.id) setTaskId(created.id);
     };
+
+    const busy = Boolean(taskId) && status !== 'SUCCESS' && status !== 'FAILURE';
 
     return (
         <div className="space-y-6">
@@ -54,7 +41,6 @@ export const AntibodyAnnotation = () => {
             </h2>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Input */}
                 <div className="lg:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
                     <form onSubmit={handleSubmit} className="space-y-4">
                         {errorInfo?.isRateLimited && (
@@ -64,19 +50,16 @@ export const AntibodyAnnotation = () => {
                                 onRetryReady={resetError}
                             />
                         )}
-
                         {errorInfo && !errorInfo.isRateLimited && (
-                            <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
-                                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                                <span>{errorInfo.message}</span>
-                            </div>
+                            <ErrorBanner message={errorInfo.message} />
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            <label htmlFor="antibody-sequence" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 Protein Sequence
                             </label>
                             <textarea
+                                id="antibody-sequence"
                                 value={sequence}
                                 onChange={(e) => setSequence(e.target.value.toUpperCase().replace(/[^A-Z*]/g, ''))}
                                 className="w-full h-40 p-3 text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
@@ -86,12 +69,13 @@ export const AntibodyAnnotation = () => {
                         </div>
 
                         <div>
-                            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                            <label htmlFor="antibody-scheme" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                                 Numbering Scheme
                             </label>
                             <select
+                                id="antibody-scheme"
                                 value={scheme}
-                                onChange={(e) => setScheme(e.target.value)}
+                                onChange={(e) => setScheme(e.target.value as 'imgt' | 'kabat' | 'chothia')}
                                 className="w-full p-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                             >
                                 <option value="imgt">IMGT</option>
@@ -102,22 +86,24 @@ export const AntibodyAnnotation = () => {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || busy}
                             className="w-full py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                         >
-                            {loading ? 'Annotating...' : 'Annotate CDRs'}
+                            {loading || busy ? 'Annotating...' : 'Annotate CDRs'}
                         </button>
                     </form>
                 </div>
 
-                {/* Results */}
                 <div className="lg:col-span-2">
-                    {error && (
-                        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800 mb-4">
-                            {error}
+                    {busy && (
+                        <div className="flex flex-col items-center justify-center text-primary-600 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
+                            <RefreshCw className="w-8 h-8 mb-2 animate-spin" />
+                            <p className="text-sm">Status: {status}</p>
                         </div>
                     )}
-
+                    {status === 'FAILURE' && error && (
+                        <ErrorBanner className="mb-4" message={error} />
+                    )}
                     {result && (
                         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
                             <div className="p-6 border-b border-slate-200 dark:border-slate-700">
@@ -127,7 +113,7 @@ export const AntibodyAnnotation = () => {
                                     <span>Scheme: <strong className="text-slate-700 dark:text-slate-300 uppercase">{result.scheme}</strong></span>
                                 </div>
                             </div>
-                            
+
                             <div className="p-6">
                                 <div className="flex flex-wrap gap-1 font-mono text-sm leading-relaxed">
                                     <RegionChunk label="FR1" sequence={result.regions.FR1} color="gray" />
@@ -160,10 +146,8 @@ export const AntibodyAnnotation = () => {
                         </div>
                     )}
 
-                    {!result && !loading && !error && (
-                        <div className="h-full flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
-                            Enter antibody sequence to identify CDRs
-                        </div>
+                    {!result && !loading && !busy && !errorInfo && status !== 'FAILURE' && (
+                        <EmptyState message="Enter antibody sequence to identify CDRs" />
                     )}
                 </div>
             </div>
@@ -173,8 +157,8 @@ export const AntibodyAnnotation = () => {
 
 const RegionChunk = ({ label, sequence, color }: { label: string, sequence: string, color: 'gray' | 'red' }) => {
     if (!sequence) return null;
-    
-    const bgClass = color === 'red' 
+
+    const bgClass = color === 'red'
         ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800"
         : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600";
 

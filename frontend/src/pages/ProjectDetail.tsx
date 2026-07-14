@@ -2,14 +2,15 @@ import React, { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, Upload, FileText, Download } from "lucide-react";
 import {
-  apiClient,
   handleApiError,
   projectsApi,
+  sequencesApi,
   type ProjectDetail as ProjectDetailData,
   type Sequence,
 } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { LoadingSpinner } from "../components/ui/LoadingSpinner";
 import clsx from "clsx";
 
 export const ProjectDetail = () => {
@@ -27,11 +28,7 @@ export const ProjectDetail = () => {
       try {
         const projectData = await projectsApi.get(id);
         setProject(projectData);
-
-        const seqRes = await apiClient.get<Sequence[]>(
-          `/projects/sequences/?project_id=${id}`,
-        );
-        setSequences(seqRes.data);
+        setSequences(await sequencesApi.listByProject(id));
       } catch (error) {
         console.error("Failed to fetch details", error);
         showToast(handleApiError(error).message, "error");
@@ -54,10 +51,7 @@ export const ProjectDetail = () => {
       showToast("Upload successful!", "success");
       const projectData = await projectsApi.get(id);
       setProject(projectData);
-      const seqRes = await apiClient.get<Sequence[]>(
-        `/projects/sequences/?project_id=${id}`,
-      );
-      setSequences(seqRes.data);
+      setSequences(await sequencesApi.listByProject(id));
     } catch (error) {
       console.error("Upload failed", error);
       showToast(handleApiError(error).message, "error");
@@ -83,7 +77,7 @@ export const ProjectDetail = () => {
     URL.revokeObjectURL(url);
   };
 
-  if (isLoading) return <div>Loading...</div>;
+  if (isLoading) return <LoadingSpinner />;
   if (!project) return <div>Project not found or access denied.</div>;
 
   const canUpload = Boolean(

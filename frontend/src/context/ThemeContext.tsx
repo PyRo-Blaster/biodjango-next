@@ -10,7 +10,6 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    console.log("ThemeProvider mounting...");
     const [theme, setTheme] = useState<Theme>(() => {
         const stored = localStorage.getItem('theme');
         if (stored === 'dark' || stored === 'light') return stored;
