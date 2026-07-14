@@ -137,7 +137,6 @@ class AnalysisAPITests(TestCase):
             ],
             "DEFAULT_AUTHENTICATION_CLASSES": [
                 "rest_framework_simplejwt.authentication.JWTAuthentication",
-                "rest_framework.authentication.BasicAuthentication",
             ],
             "DEFAULT_THROTTLE_CLASSES": [
                 "rest_framework.throttling.UserRateThrottle",
@@ -158,3 +157,153 @@ class AnalysisAPITests(TestCase):
         ]
         self.assertNotIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses)
         self.assertTrue(all(code == status.HTTP_200_OK for code in statuses))
+
+    def test_task_poll_omits_result_payload(self):
+        """Polling endpoint returns the lightweight status shape only."""
+        self.client.force_authenticate(user=self.user)
+        task = AnalysisTask.objects.create(
+            task_type="BLAST",
+            status="SUCCESS",
+            result={"output": "X" * 10_000},
+        )
+        response = self.client.get(f"/api/analysis/tasks/{task.id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn("result", response.data)
+        self.assertEqual(set(response.data.keys()),
+                         {"id", "task_type", "status", "error_message", "updated_at"})
+
+    def test_task_result_endpoint_returns_full_payload(self):
+        self.client.force_authenticate(user=self.user)
+        task = AnalysisTask.objects.create(
+            task_type="BLAST",
+            status="SUCCESS",
+            result={"output": "hit_line"},
+        )
+        response = self.client.get(f"/api/analysis/tasks/{task.id}/result/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["result"], {"output": "hit_line"})
+        self.assertEqual(response.data["status"], "SUCCESS")
+
+    @patch("analysis.views.run_peptide_calc_task.delay")
+    def test_peptide_calc_dispatches_task(self, mocked_delay):
+        mocked_delay.return_value = None
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/peptide-calc/",
+            {"target_mass": 500.0, "error_range": 5.0, "num_amino_acids": 3},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["task_type"], "PEPTIDE_CALC")
+        self.assertIn("id", response.data)
+        mocked_delay.assert_called_once()
+
+    @patch("analysis.views.run_peptide_calc_task.delay")
+    def test_peptide_calc_returns_503_when_queue_unavailable(self, mocked_delay):
+        mocked_delay.side_effect = RuntimeError("broker down")
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/peptide-calc/",
+            {"target_mass": 500.0, "error_range": 5.0, "num_amino_acids": 3},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        task = AnalysisTask.objects.get(task_type="PEPTIDE_CALC")
+        self.assertEqual(task.status, "FAILURE")
+
+    @patch("analysis.views.run_primer_design_task.delay")
+    def test_primer_design_dispatches_task(self, mocked_delay):
+        mocked_delay.return_value = None
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/primer-design/",
+            {"sequence": "ATCG" * 30, "product_size_range": "50-150", "tm_opt": 60.0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["task_type"], "PRIMER_DESIGN")
+
+    @patch("analysis.views.run_antibody_annotation_task.delay")
+    def test_antibody_annotation_dispatches_task(self, mocked_delay):
+        mocked_delay.return_value = None
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/antibody-annotation/",
+            {"sequence": "EVQL", "scheme": "imgt"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data["task_type"], "ANTIBODY_ANNOTATION")
+
+    @patch("analysis.views.run_blast_task.delay")
+    def test_task_submission_records_audit_row(self, mocked_delay):
+        from core.models import AuditLog
+
+        mocked_delay.return_value = None
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(
+            "/api/analysis/blast/",
+            {
+                "sequence": "MKTAYIAKQR",
+                "evalue": 0.001,
+                "db": "swissprot",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        entry = AuditLog.objects.get(
+            action=AuditLog.Action.SUBMIT,
+            object_id=response.data["id"],
+        )
+        self.assertEqual(entry.actor, self.user)
+        self.assertEqual(entry.details["task_type"], "BLAST")
+
+    @patch("analysis.views.run_blast_task.delay")
+    def test_failed_dispatch_does_not_record_submit(self, mocked_delay):
+        from core.models import AuditLog
+
+        mocked_delay.side_effect = RuntimeError("broker down")
+        self.client.force_authenticate(user=self.user)
+        self.client.post(
+            "/api/analysis/blast/",
+            {"sequence": "MKTAYIAKQR", "evalue": 0.001, "db": "swissprot"},
+            format="json",
+        )
+        # No SUBMIT row when the dispatch failed.
+        self.assertFalse(
+            AuditLog.objects.filter(action=AuditLog.Action.SUBMIT).exists()
+        )
+
+
+class AnalysisTaskExecutionTests(TestCase):
+    """Verify tasks run inline via ``CELERY_TASK_ALWAYS_EAGER``."""
+
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_peptide_calc_task_completes_successfully(self):
+        from analysis.tasks import run_peptide_calc_task
+
+        task = AnalysisTask.objects.create(task_type="PEPTIDE_CALC")
+        run_peptide_calc_task.delay(
+            task_id=str(task.id), target_mass=500.0, error_range=5.0, num_amino_acids=2
+        )
+        task.refresh_from_db()
+        self.assertEqual(task.status, "SUCCESS")
+        self.assertIn("csv_content", task.result)
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+    def test_primer_design_task_marks_failure_on_short_sequence(self):
+        from analysis.tasks import run_primer_design_task
+
+        task = AnalysisTask.objects.create(task_type="PRIMER_DESIGN")
+        run_primer_design_task.delay(
+            task_id=str(task.id),
+            sequence="ATCG",
+            product_size_range="100-300",
+            tm_opt=60.0,
+        )
+        task.refresh_from_db()
+        self.assertEqual(task.status, "FAILURE")
+        self.assertTrue(task.error_message)

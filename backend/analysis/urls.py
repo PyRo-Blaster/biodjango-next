@@ -1,20 +1,19 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 from .views import (
-    AnalysisTaskViewSet,
+    AnalysisTaskResultView,
+    AnalysisTaskRetrieveView,
+    AntibodyAnnotationView,
     BlastTaskView,
     MsaTaskView,
     PeptideCalcView,
-    SequenceAnalysisView,
     PrimerDesignView,
-    AntibodyAnnotationView
+    SequenceAnalysisView,
 )
 
-router = DefaultRouter()
-router.register(r'tasks', AnalysisTaskViewSet)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path('tasks/<uuid:id>/', AnalysisTaskRetrieveView.as_view(), name='task-detail'),
+    path('tasks/<uuid:id>/result/', AnalysisTaskResultView.as_view(), name='task-result'),
     path('blast/', BlastTaskView.as_view(), name='run-blast'),
     path('msa/', MsaTaskView.as_view(), name='run-msa'),
     path('peptide-calc/', PeptideCalcView.as_view(), name='peptide-calc'),
