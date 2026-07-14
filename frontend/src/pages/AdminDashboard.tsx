@@ -1,40 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, X } from "lucide-react";
 import clsx from "clsx";
-import { apiClient, handleApiError } from "../api";
+import { adminApi, handleApiError } from "../api";
+import type { AccessRequest, AuditLog } from "../api";
 import { useToast } from "../context/ToastContext";
-
-interface Request {
-  id: string;
-  user: { username: string; email: string };
-  project_name: string;
-  reason: string;
-  status: string;
-  created_at: string;
-}
-
-interface AuditLog {
-  id: number;
-  actor_username: string;
-  action: string;
-  target_type: string;
-  object_id: string;
-  ip_address: string;
-  timestamp: string;
-  details: Record<string, unknown> | null;
-}
+import { LoadingSpinner } from "../components/ui/LoadingSpinner";
 
 export const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<"requests" | "audit">("requests");
-  const [requests, setRequests] = useState<Request[]>([]);
+  const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { showToast } = useToast();
 
   const fetchRequests = useCallback(async () => {
     try {
-      const response = await apiClient.get<Request[]>("/projects/access-requests/");
-      setRequests(response.data);
+      setRequests(await adminApi.listAccessRequests());
     } catch (error) {
       console.error("Failed to fetch requests", error);
       showToast(handleApiError(error).message, "error");
@@ -43,8 +24,7 @@ export const AdminDashboard = () => {
 
   const fetchAuditLogs = useCallback(async () => {
     try {
-      const response = await apiClient.get<AuditLog[]>("/core/audit-logs/");
-      setAuditLogs(response.data);
+      setAuditLogs(await adminApi.listAuditLogs());
     } catch (error) {
       console.error("Failed to fetch audit logs", error);
       showToast(handleApiError(error).message, "error");
@@ -62,21 +42,14 @@ export const AdminDashboard = () => {
 
   const handleReview = async (id: string, status: "APPROVED" | "REJECTED") => {
     try {
-      await apiClient.patch(`/projects/access-requests/${id}/review/`, {
-        status,
-      });
+      await adminApi.reviewAccessRequest(id, status);
       await fetchRequests();
     } catch (error) {
       showToast(handleApiError(error).message, "error");
     }
   };
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
+  if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="space-y-6">

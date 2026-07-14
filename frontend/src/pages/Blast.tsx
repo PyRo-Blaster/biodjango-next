@@ -1,89 +1,53 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Search,
-  Loader2,
   AlertCircle,
-  RefreshCw,
   FileText,
+  Loader2,
+  RefreshCw,
+  Search,
 } from "lucide-react";
-import { apiClient, handleApiError } from "../api/client";
+import { analysisApi } from "../api";
+import type { BlastResult } from "../api";
 import { BlastViewer } from "../components/BlastViewer";
 import { ExportPDFButton } from "../components/ExportPDFButton";
 import { RateLimitAlert } from "../components/RateLimitAlert";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { useAnalysisTool } from "../hooks/useAnalysisTool";
-
-interface TaskStatus {
-  id: string;
-  status: "PENDING" | "STARTED" | "SUCCESS" | "FAILURE";
-  error_message?: string;
-}
-
-interface TaskResult extends TaskStatus {
-  result?: {
-    output: string;
-  };
-}
+import { useTaskPolling } from "../hooks/useTaskPolling";
 
 export const Blast = () => {
   const [sequence, setSequence] = useState("");
   const [evalue, setEvalue] = useState("1e-6");
   const [db, setDb] = useState("swissprot");
-
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskStatus>();
+
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ id: string }>();
+  const { status, result, error, reset } = useTaskPolling<BlastResult>(taskId);
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
-    if (taskId && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE") {
-      intervalId = setInterval(async () => {
-        try {
-          const response = await apiClient.get<TaskStatus>(`/analysis/tasks/${taskId}/`);
-          setTaskStatus(response.data.status);
-
-          if (response.data.status === "SUCCESS") {
-            const full = await apiClient.get<TaskResult>(`/analysis/tasks/${taskId}/result/`);
-            setResult(full.data.result?.output ?? "");
-          } else if (response.data.status === "FAILURE") {
-            setError(response.data.error_message || "Task failed");
-          }
-        } catch (err) {
-          const parsed = handleApiError(err);
-          setError(parsed.message);
-          setTaskId(null);
-        }
-      }, 2000);
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [taskId, taskStatus]);
+    if (error) setTaskId(null);
+  }, [error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setResult(null);
     setTaskId(null);
-    setTaskStatus(null);
     resetError();
 
-    const created = await execute(async () => {
-      const response = await apiClient.post<TaskStatus>("/analysis/blast/", {
+    const created = await execute(() =>
+      analysisApi.submitBlast({
         sequence,
         evalue: parseFloat(evalue),
         db,
-      });
-      return response.data;
-    });
+      }),
+    );
 
-    if (created?.id) {
-      setTaskId(created.id);
-      setTaskStatus("PENDING");
-    }
+    if (created?.id) setTaskId(created.id);
+  };
+
+  const handleReset = () => {
+    setTaskId(null);
+    reset();
   };
 
   return (
@@ -91,7 +55,6 @@ export const Blast = () => {
       <h2 className="text-2xl font-bold text-slate-800">BLAST Search</h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Input Form */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -102,19 +65,16 @@ export const Blast = () => {
                   onRetryReady={resetError}
                 />
               )}
-
               {errorInfo && !errorInfo.isRateLimited && (
-                <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>{errorInfo.message}</span>
-                </div>
+                <ErrorBanner message={errorInfo.message} />
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="blast-sequence" className="block text-sm font-medium text-slate-700 mb-2">
                   Sequence (FASTA)
                 </label>
                 <textarea
+                  id="blast-sequence"
                   value={sequence}
                   onChange={(e) => setSequence(e.target.value)}
                   placeholder=">Seq1&#10;MTEITAAMVKELRESTGAGMMDCKNALSETNGDFDKAVQLLREKGLGKAAKKADRLAAEG"
@@ -124,10 +84,11 @@ export const Blast = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="blast-evalue" className="block text-sm font-medium text-slate-700 mb-2">
                   E-Value
                 </label>
                 <select
+                  id="blast-evalue"
                   value={evalue}
                   onChange={(e) => setEvalue(e.target.value)}
                   className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
@@ -142,10 +103,11 @@ export const Blast = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="blast-db" className="block text-sm font-medium text-slate-700 mb-2">
                   Database
                 </label>
                 <select
+                  id="blast-db"
                   value={db}
                   onChange={(e) => setDb(e.target.value)}
                   className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
@@ -171,11 +133,10 @@ export const Blast = () => {
           </div>
         </div>
 
-        {/* Results Section */}
         <div className="lg:col-span-2">
           {taskId ? (
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 flex flex-col items-center justify-center min-h-[300px] text-center space-y-4">
-              {taskStatus === "SUCCESS" ? (
+              {status === "SUCCESS" ? (
                 <div className="space-y-4 w-full text-left">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                     <div className="flex items-center gap-4">
@@ -188,19 +149,15 @@ export const Blast = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {result && (
+                      {result?.output && (
                         <ExportPDFButton
                           type="BLAST"
-                          data={result}
+                          data={result.output}
                           filename={`blast_${taskId}.pdf`}
                         />
                       )}
                       <button
-                        onClick={() => {
-                          setTaskId(null);
-                          setResult(null);
-                          setTaskStatus(null);
-                        }}
+                        onClick={handleReset}
                         className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-md transition-colors"
                       >
                         Start New Search
@@ -208,10 +165,10 @@ export const Blast = () => {
                     </div>
                   </div>
                   <div className="w-full text-left">
-                    {result && <BlastViewer output={result} />}
+                    {result?.output && <BlastViewer output={result.output} />}
                   </div>
                 </div>
-              ) : taskStatus === "FAILURE" ? (
+              ) : status === "FAILURE" ? (
                 <div className="text-red-500 flex flex-col items-center">
                   <AlertCircle className="w-12 h-12 mb-2" />
                   <p className="font-medium">Analysis Failed</p>
@@ -221,15 +178,16 @@ export const Blast = () => {
                 <div className="text-primary-600 flex flex-col items-center animate-pulse">
                   <RefreshCw className="w-12 h-12 mb-4 animate-spin" />
                   <p className="font-medium text-lg">Running Analysis...</p>
-                  <p className="text-slate-500">Status: {taskStatus}</p>
+                  <p className="text-slate-500">Status: {status}</p>
                 </div>
               )}
             </div>
           ) : (
-            <div className="h-full min-h-[400px] flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-              <Search className="w-16 h-16 mb-4 opacity-20" />
-              <p>Enter sequence to start BLAST search</p>
-            </div>
+            <EmptyState
+              icon={Search}
+              message="Enter sequence to start BLAST search"
+              className="h-full min-h-[400px]"
+            />
           )}
         </div>
       </div>

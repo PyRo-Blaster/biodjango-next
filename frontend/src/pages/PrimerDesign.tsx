@@ -1,97 +1,42 @@
 import React, { useEffect, useState } from "react";
-import { AlertCircle, Dna, RefreshCw } from "lucide-react";
+import { Dna, RefreshCw } from "lucide-react";
 import clsx from "clsx";
-import { apiClient, handleApiError } from "../api/client";
+import { analysisApi } from "../api";
+import type { PrimerDesignResult, PrimerPair } from "../api";
 import { RateLimitAlert } from "../components/RateLimitAlert";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { useAnalysisTool } from "../hooks/useAnalysisTool";
-
-interface Primer {
-  sequence: string;
-  tm: number;
-  gc_percent: number;
-  start: number;
-  length: number;
-}
-
-interface PrimerPair {
-  rank: number;
-  forward: Primer;
-  reverse: Primer;
-  product_size: number;
-}
-
-interface TaskStatus {
-  id: string;
-  status: "PENDING" | "STARTED" | "SUCCESS" | "FAILURE";
-  error_message?: string;
-}
-
-interface TaskResult extends TaskStatus {
-  result?: { primers: PrimerPair[] };
-}
+import { useTaskPolling } from "../hooks/useTaskPolling";
 
 export const PrimerDesign = () => {
   const [sequence, setSequence] = useState("");
   const [productSize, setProductSize] = useState("100-300");
   const [tmOpt, setTmOpt] = useState(60.0);
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<string | null>(null);
-  const [result, setResult] = useState<{ primers: PrimerPair[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskStatus>();
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ id: string }>();
+  const { status, result, error } = useTaskPolling<PrimerDesignResult>(taskId);
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
-    if (taskId && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE") {
-      intervalId = setInterval(async () => {
-        try {
-          const response = await apiClient.get<TaskStatus>(`/analysis/tasks/${taskId}/`);
-          setTaskStatus(response.data.status);
-
-          if (response.data.status === "SUCCESS") {
-            const full = await apiClient.get<TaskResult>(`/analysis/tasks/${taskId}/result/`);
-            setResult(full.data.result ?? null);
-          } else if (response.data.status === "FAILURE") {
-            setError(response.data.error_message || "Task failed");
-          }
-        } catch (err) {
-          const parsed = handleApiError(err);
-          setError(parsed.message);
-          setTaskId(null);
-        }
-      }, 2000);
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [taskId, taskStatus]);
+    if (error) setTaskId(null);
+  }, [error]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setResult(null);
-    setError(null);
     setTaskId(null);
-    setTaskStatus(null);
     resetError();
 
-    const created = await execute(async () => {
-      const response = await apiClient.post<TaskStatus>("/analysis/primer-design/", {
+    const created = await execute(() =>
+      analysisApi.submitPrimerDesign({
         sequence,
         product_size_range: productSize,
         tm_opt: tmOpt,
-      });
-      return response.data;
-    });
-
-    if (created?.id) {
-      setTaskId(created.id);
-      setTaskStatus("PENDING");
-    }
+      }),
+    );
+    if (created?.id) setTaskId(created.id);
   };
 
-  const busy = Boolean(taskId) && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE";
+  const busy = Boolean(taskId) && status !== "SUCCESS" && status !== "FAILURE";
 
   return (
     <div className="space-y-6">
@@ -101,7 +46,6 @@ export const PrimerDesign = () => {
       </h2>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Input Form */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm h-fit">
           <form onSubmit={handleSubmit} className="space-y-4">
             {errorInfo?.isRateLimited && (
@@ -111,24 +55,19 @@ export const PrimerDesign = () => {
                 onRetryReady={resetError}
               />
             )}
-
             {errorInfo && !errorInfo.isRateLimited && (
-              <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span>{errorInfo.message}</span>
-              </div>
+              <ErrorBanner message={errorInfo.message} />
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label htmlFor="primer-sequence" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 Template Sequence (DNA)
               </label>
               <textarea
+                id="primer-sequence"
                 value={sequence}
                 onChange={(e) =>
-                  setSequence(
-                    e.target.value.toUpperCase().replace(/[^ATCGN]/g, ""),
-                  )
+                  setSequence(e.target.value.toUpperCase().replace(/[^ATCGN]/g, ""))
                 }
                 className="w-full h-40 p-3 text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                 placeholder="ATCG..."
@@ -138,10 +77,11 @@ export const PrimerDesign = () => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="product-size" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Product Size
                 </label>
                 <input
+                  id="product-size"
                   type="text"
                   value={productSize}
                   onChange={(e) => setProductSize(e.target.value)}
@@ -150,10 +90,11 @@ export const PrimerDesign = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="tm-opt" className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Optimal Tm (°C)
                 </label>
                 <input
+                  id="tm-opt"
                   type="number"
                   value={tmOpt}
                   onChange={(e) => setTmOpt(parseFloat(e.target.value))}
@@ -173,21 +114,17 @@ export const PrimerDesign = () => {
           </form>
         </div>
 
-        {/* Results */}
         <div className="lg:col-span-2">
           {busy && (
             <div className="flex flex-col items-center justify-center text-primary-600 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
               <RefreshCw className="w-8 h-8 mb-2 animate-spin" />
-              <p className="text-sm">Status: {taskStatus}</p>
+              <p className="text-sm">Status: {status}</p>
             </div>
           )}
-          {taskStatus === "FAILURE" && error && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-800 mb-4 flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>{error}</span>
-            </div>
+          {status === "FAILURE" && error && (
+            <ErrorBanner className="mb-4" message={error} />
           )}
-          {result && result.primers && (
+          {result?.primers && (
             <div className="space-y-4">
               {result.primers.map((pair, idx) => (
                 <div
@@ -203,26 +140,16 @@ export const PrimerDesign = () => {
                     </span>
                   </div>
                   <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <PrimerCard
-                      type="Forward"
-                      data={pair.forward}
-                      color="blue"
-                    />
-                    <PrimerCard
-                      type="Reverse"
-                      data={pair.reverse}
-                      color="green"
-                    />
+                    <PrimerCard type="Forward" data={pair.forward} color="blue" />
+                    <PrimerCard type="Reverse" data={pair.reverse} color="green" />
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {!result && !loading && !busy && !errorInfo && taskStatus !== "FAILURE" && (
-            <div className="h-full flex items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-12">
-              Enter sequence and parameters to generate primers
-            </div>
+          {!result && !loading && !busy && !errorInfo && status !== "FAILURE" && (
+            <EmptyState message="Enter sequence and parameters to generate primers" />
           )}
         </div>
       </div>
@@ -236,7 +163,7 @@ const PrimerCard = ({
   color,
 }: {
   type: string;
-  data: Primer;
+  data: PrimerPair["forward"];
   color: "blue" | "green";
 }) => {
   const colorClasses =
@@ -256,15 +183,9 @@ const PrimerCard = ({
         {data.sequence}
       </div>
       <div className="flex gap-4 text-xs opacity-80">
+        <span>Tm: {typeof data.tm === "number" ? data.tm.toFixed(1) : data.tm}°C</span>
         <span>
-          Tm: {typeof data.tm === "number" ? data.tm.toFixed(1) : data.tm}°C
-        </span>
-        <span>
-          GC:{" "}
-          {typeof data.gc_percent === "number"
-            ? data.gc_percent.toFixed(1)
-            : data.gc_percent}
-          %
+          GC: {typeof data.gc_percent === "number" ? data.gc_percent.toFixed(1) : data.gc_percent}%
         </span>
       </div>
     </div>

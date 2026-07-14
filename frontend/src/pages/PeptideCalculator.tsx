@@ -1,85 +1,43 @@
 import React, { useEffect, useState } from "react";
-import { AlertCircle, Download, Loader2, RefreshCw } from "lucide-react";
-import { apiClient, handleApiError } from "../api/client";
+import { Download, Loader2, RefreshCw } from "lucide-react";
+import { analysisApi } from "../api";
+import type { PeptideCalcResult } from "../api";
 import { RateLimitAlert } from "../components/RateLimitAlert";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { useAnalysisTool } from "../hooks/useAnalysisTool";
-
-interface TaskStatus {
-  id: string;
-  status: "PENDING" | "STARTED" | "SUCCESS" | "FAILURE";
-  error_message?: string;
-}
-
-interface TaskResult extends TaskStatus {
-  result?: {
-    csv_content: string;
-  };
-}
+import { useTaskPolling } from "../hooks/useTaskPolling";
 
 export const PeptideCalculator = () => {
   const [targetMass, setTargetMass] = useState<string>("500.0");
   const [errorRange, setErrorRange] = useState<string>("1.0");
   const [numAminoAcids, setNumAminoAcids] = useState<string>("4");
   const [taskId, setTaskId] = useState<string | null>(null);
-  const [taskStatus, setTaskStatus] = useState<string | null>(null);
-  const [csvContent, setCsvContent] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { loading, errorInfo, execute, resetError } = useAnalysisTool<TaskStatus>();
+  const { loading, errorInfo, execute, resetError } = useAnalysisTool<{ id: string }>();
+  const { status, result, error } = useTaskPolling<PeptideCalcResult>(taskId);
 
   useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | undefined;
-
-    if (taskId && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE") {
-      intervalId = setInterval(async () => {
-        try {
-          const response = await apiClient.get<TaskStatus>(`/analysis/tasks/${taskId}/`);
-          setTaskStatus(response.data.status);
-
-          if (response.data.status === "SUCCESS") {
-            const full = await apiClient.get<TaskResult>(`/analysis/tasks/${taskId}/result/`);
-            setCsvContent(full.data.result?.csv_content ?? "");
-          } else if (response.data.status === "FAILURE") {
-            setError(response.data.error_message || "Task failed");
-          }
-        } catch (err) {
-          const parsed = handleApiError(err);
-          setError(parsed.message);
-          setTaskId(null);
-        }
-      }, 2000);
-    }
-
-    return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [taskId, taskStatus]);
+    if (error) setTaskId(null);
+  }, [error]);
 
   const handleCalculate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCsvContent(null);
-    setError(null);
     setTaskId(null);
-    setTaskStatus(null);
     resetError();
 
-    const created = await execute(async () => {
-      const response = await apiClient.post<TaskStatus>("/analysis/peptide-calc/", {
+    const created = await execute(() =>
+      analysisApi.submitPeptideCalc({
         target_mass: parseFloat(targetMass),
         error_range: parseFloat(errorRange),
         num_amino_acids: parseInt(numAminoAcids),
-      });
-      return response.data;
-    });
+      }),
+    );
 
-    if (created?.id) {
-      setTaskId(created.id);
-      setTaskStatus("PENDING");
-    }
+    if (created?.id) setTaskId(created.id);
   };
 
   const handleDownload = () => {
-    if (!csvContent) return;
-    const blob = new Blob([csvContent], { type: "text/csv" });
+    if (!result?.csv_content) return;
+    const blob = new Blob([result.csv_content], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -89,7 +47,7 @@ export const PeptideCalculator = () => {
     document.body.removeChild(a);
   };
 
-  const busy = Boolean(taskId) && taskStatus !== "SUCCESS" && taskStatus !== "FAILURE";
+  const busy = Boolean(taskId) && status !== "SUCCESS" && status !== "FAILURE";
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -106,20 +64,17 @@ export const PeptideCalculator = () => {
               onRetryReady={resetError}
             />
           )}
-
           {errorInfo && !errorInfo.isRateLimited && (
-            <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>{errorInfo.message}</span>
-            </div>
+            <ErrorBanner message={errorInfo.message} />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="target-mass" className="block text-sm font-medium text-slate-700 mb-2">
                 Target Mass (Da)
               </label>
               <input
+                id="target-mass"
                 type="number"
                 step="0.01"
                 value={targetMass}
@@ -130,10 +85,11 @@ export const PeptideCalculator = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label htmlFor="error-range" className="block text-sm font-medium text-slate-700 mb-2">
                 Error Range (Da)
               </label>
               <input
+                id="error-range"
                 type="number"
                 step="0.01"
                 value={errorRange}
@@ -145,10 +101,11 @@ export const PeptideCalculator = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
+            <label htmlFor="num-aa" className="block text-sm font-medium text-slate-700 mb-2">
               Number of Amino Acids
             </label>
             <select
+              id="num-aa"
               value={numAminoAcids}
               onChange={(e) => setNumAminoAcids(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all"
@@ -181,19 +138,16 @@ export const PeptideCalculator = () => {
           <div className="mt-6 flex flex-col items-center text-primary-600">
             <RefreshCw className="w-8 h-8 mb-2 animate-spin" />
             <p className="text-sm">
-              {taskStatus ? `Status: ${taskStatus}` : "Submitting..."}
+              {status ? `Status: ${status}` : "Submitting..."}
             </p>
           </div>
         )}
 
-        {taskStatus === "FAILURE" && error && (
-          <div className="mt-6 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
+        {status === "FAILURE" && error && (
+          <ErrorBanner className="mt-6" message={error} />
         )}
 
-        {csvContent && (
+        {result?.csv_content && (
           <div className="mt-8 pt-6 border-t border-slate-100 animate-in fade-in slide-in-from-top-4 duration-300">
             <div className="flex items-center justify-between mb-4">
               <span className="text-sm font-medium text-slate-600">
@@ -209,7 +163,7 @@ export const PeptideCalculator = () => {
             </div>
 
             <div className="bg-slate-50 rounded-lg border border-slate-200 p-4 max-h-60 overflow-y-auto font-mono text-xs text-slate-600">
-              <pre>{csvContent}</pre>
+              <pre>{result.csv_content}</pre>
             </div>
           </div>
         )}

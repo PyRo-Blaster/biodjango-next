@@ -40,14 +40,14 @@ export const RateLimitAlert: React.FC<RateLimitAlertProps> = ({
           {countdown > 0 ? (
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              请等待 {countdown} 秒后重试
+              Please wait {countdown} second{countdown === 1 ? '' : 's'} before retrying
             </span>
           ) : (
-            <span className="text-green-700">现在可以重新提交</span>
+            <span className="text-green-700">You can retry now</span>
           )}
         </p>
         <p className="text-yellow-700 text-xs mt-2">
-          提示：登录后可获得更高请求配额
+          Tip: signing in gives you a higher request quota.
         </p>
       </div>
     </div>

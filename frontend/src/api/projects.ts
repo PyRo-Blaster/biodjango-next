@@ -1,11 +1,4 @@
-import { apiClient } from './client';
-
-export interface Paginated<T> {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
-}
+import { apiClient, unwrapList, type Paginated } from './client';
 
 export interface Project {
   id: string;
@@ -36,7 +29,7 @@ export interface Sequence {
 export const projectsApi = {
   list: async (): Promise<Project[]> => {
     const response = await apiClient.get<Project[] | Paginated<Project>>('/projects/');
-    return Array.isArray(response.data) ? response.data : response.data.results;
+    return unwrapList(response.data);
   },
 
   get: async (id: string): Promise<ProjectDetail> => {

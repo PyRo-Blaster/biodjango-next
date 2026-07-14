@@ -82,7 +82,14 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route element={<LayoutShell />}>
-              <Route path="/" element={<Dashboard />} />
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <Dashboard />
+                  </RequireAuth>
+                }
+              />
               <Route
                 path="/projects"
                 element={

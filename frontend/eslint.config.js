@@ -43,6 +43,28 @@ export default [
     },
   },
   {
+    files: ['src/pages/**/*.{ts,tsx}', 'src/components/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'axios',
+              message: 'Use typed API modules from src/api/ instead of raw axios.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/api/client'],
+              message: 'Pages and components must import from a typed API module (src/api/{analysis,projects,sequences,admin,auth}) rather than the raw apiClient.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/context/*.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',
