@@ -4,6 +4,10 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Count, Q
 from django.utils import timezone
+
+from core.audit import AuditMixin, log_action
+from core.models import AuditLog
+
 from .models import Project, ProteinSequence, AccessRequest
 from .serializers import ProjectSerializer, ProteinSequenceSerializer, AccessRequestSerializer
 from .permissions import (
@@ -13,7 +17,8 @@ from .permissions import (
 )
 from .utils import validate_fasta
 
-class ProjectViewSet(viewsets.ModelViewSet):
+
+class ProjectViewSet(AuditMixin, viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -24,8 +29,8 @@ class ProjectViewSet(viewsets.ModelViewSet):
             .annotate(sequences_count=Count("sequences"))
         )
 
-    def perform_create(self, serializer):
-        serializer.save(owner=self.request.user)
+    def get_create_kwargs(self):
+        return {"owner": self.request.user}
 
     def get_permissions(self):
         if self.action == "create":
@@ -38,9 +43,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        """
-        Get project statistics.
-        """
+        """Get project statistics."""
         user = request.user
         total_projects = Project.objects.count()
         total_sequences = ProteinSequence.objects.count()
@@ -62,25 +65,20 @@ class ProjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], parser_classes=[parsers.MultiPartParser])
     def upload_fasta(self, request, pk=None):
-        """
-        Bulk upload sequences via FASTA file with validation.
-        """
+        """Bulk upload sequences via FASTA file with validation."""
         project = self.get_object()
         file_obj = request.data.get('file')
-        
+
         if not file_obj:
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Decode file content
             content = file_obj.read().decode('utf-8')
-            
-            # Validate and parse
             valid_data, errors = validate_fasta(content, project)
-            
+
             if errors:
                 return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
-            
+
             if not valid_data:
                 return Response({"error": "No valid sequences found"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -89,25 +87,39 @@ class ProjectViewSet(viewsets.ModelViewSet):
                     project=project,
                     name=item['name'],
                     sequence=item['sequence'],
-                    metadata=item['metadata']
+                    metadata=item['metadata'],
                 ) for item in valid_data
             ]
-            
+
             ProteinSequence.objects.bulk_create(sequences_to_create)
-            
+
+            # ``bulk_create`` doesn't fire per-row signals; log a single
+            # aggregate row against the project so the upload is visible.
+            log_action(
+                request=request,
+                action=AuditLog.Action.CREATE,
+                target=project,
+                details={
+                    'event': 'bulk_fasta_upload',
+                    'project': project.name,
+                    'count': len(sequences_to_create),
+                    'sequence_names': [item['name'] for item in valid_data[:20]],
+                },
+            )
+
             return Response({
-                "status": "success", 
+                "status": "success",
                 "count": len(sequences_to_create),
-                "message": f"Successfully uploaded {len(sequences_to_create)} sequences."
+                "message": f"Successfully uploaded {len(sequences_to_create)} sequences.",
             })
-            
+
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+
 class ProteinSequenceViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Read-only view for sequences. Creation happens via Project bulk upload or admin.
-    """
+    """Read-only view for sequences. Creation happens via Project bulk upload or admin."""
+
     serializer_class = ProteinSequenceSerializer
     permission_classes = [permissions.IsAuthenticated, HasProjectAccess]
 
@@ -120,7 +132,8 @@ class ProteinSequenceViewSet(viewsets.ReadOnlyModelViewSet):
         self.check_object_permissions(self.request, project)
         return project.sequences.select_related("project").all()
 
-class AccessRequestViewSet(viewsets.ModelViewSet):
+
+class AccessRequestViewSet(AuditMixin, viewsets.ModelViewSet):
     serializer_class = AccessRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -137,8 +150,8 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
             Q(user=user) | Q(project__owner=user)
         ).distinct().order_by("-created_at")
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def get_create_kwargs(self):
+        return {"user": self.request.user}
 
     @action(
         detail=True,
@@ -146,15 +159,14 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
         permission_classes=[permissions.IsAuthenticated, CanReviewAccessRequest],
     )
     def review(self, request, pk=None):
-        """
-        Approve or Reject a request.
-        """
+        """Approve or reject an access request."""
         access_request = self.get_object()
         new_status = request.data.get('status')
-        
+
         if new_status not in ['APPROVED', 'REJECTED']:
             return Response({"error": "Invalid status"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        previous_status = access_request.status
         access_request.status = new_status
         access_request.reviewed_by = request.user
         access_request.reviewed_at = timezone.now()
@@ -162,5 +174,17 @@ class AccessRequestViewSet(viewsets.ModelViewSet):
 
         if new_status == 'APPROVED':
             access_request.project.allowed_users.add(access_request.user)
-            
+
+        log_action(
+            request=request,
+            action=AuditLog.Action.APPROVE if new_status == 'APPROVED' else AuditLog.Action.REJECT,
+            target=access_request,
+            details={
+                'project': access_request.project.name,
+                'requester': access_request.user.username,
+                'previous_status': previous_status,
+                'new_status': new_status,
+            },
+        )
+
         return Response({"status": "success", "new_status": new_status})

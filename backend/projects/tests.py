@@ -1,7 +1,11 @@
+import io
+
 from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
+
+from core.models import AuditLog
 
 from .models import AccessRequest, Project, ProteinSequence
 from .utils import validate_fasta
@@ -136,3 +140,108 @@ class ProjectPermissionAPITests(TestCase):
             f"/api/projects/sequences/?project_id={self.project.id}",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AuditMixinTests(TestCase):
+    """Every mutating action produces a single AuditLog row with the right actor."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create_user(username="alice", password="pw123")
+        self.other = User.objects.create_user(username="bob", password="pw123")
+        self.project = Project.objects.create(
+            name="Genome Mapping",
+            description="Original description",
+            owner=self.owner,
+        )
+
+    def test_create_project_writes_audit_row(self):
+        self.client.force_authenticate(user=self.other)
+        response = self.client.post(
+            "/api/projects/",
+            {"name": "New Project", "description": "New"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        entry = AuditLog.objects.get(action=AuditLog.Action.CREATE, object_id=response.data["id"])
+        self.assertEqual(entry.actor, self.other)
+        self.assertEqual(entry.details["name"], "New Project")
+
+    def test_update_project_records_before_after_diff(self):
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.patch(
+            f"/api/projects/{self.project.id}/",
+            {"description": "Updated description"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = AuditLog.objects.get(
+            action=AuditLog.Action.UPDATE,
+            object_id=str(self.project.id),
+        )
+        self.assertEqual(entry.actor, self.owner)
+        self.assertEqual(
+            entry.details["changes"]["description"],
+            {"before": "Original description", "after": "Updated description"},
+        )
+
+    def test_delete_project_records_audit_with_pre_delete_identity(self):
+        self.client.force_authenticate(user=self.owner)
+        project_id = str(self.project.id)
+        response = self.client.delete(f"/api/projects/{self.project.id}/")
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        entry = AuditLog.objects.get(action=AuditLog.Action.DELETE, object_id=project_id)
+        self.assertEqual(entry.actor, self.owner)
+
+    def test_review_records_approve_action(self):
+        requester = User.objects.create_user(username="requester", password="pw123")
+        req = AccessRequest.objects.create(
+            user=requester, project=self.project, reason="please"
+        )
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.patch(
+            f"/api/projects/access-requests/{req.id}/review/",
+            {"status": "APPROVED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = AuditLog.objects.get(action=AuditLog.Action.APPROVE, object_id=str(req.id))
+        self.assertEqual(entry.actor, self.owner)
+        self.assertEqual(entry.details["requester"], "requester")
+
+    def test_review_reject_records_reject_action(self):
+        requester = User.objects.create_user(username="requester2", password="pw123")
+        req = AccessRequest.objects.create(
+            user=requester, project=self.project, reason="please"
+        )
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.patch(
+            f"/api/projects/access-requests/{req.id}/review/",
+            {"status": "REJECTED"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action=AuditLog.Action.REJECT, object_id=str(req.id)
+            ).exists()
+        )
+
+    def test_upload_fasta_records_batch_audit(self):
+        self.client.force_authenticate(user=self.owner)
+        fasta = io.BytesIO(b">seqA\nACDE\n>seqB\nFGHI\n")
+        fasta.name = "test.fasta"
+        response = self.client.post(
+            f"/api/projects/{self.project.id}/upload_fasta/",
+            {"file": fasta},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        entry = AuditLog.objects.get(
+            action=AuditLog.Action.CREATE,
+            object_id=str(self.project.id),
+        )
+        self.assertEqual(entry.actor, self.owner)
+        self.assertEqual(entry.details["event"], "bulk_fasta_upload")
+        self.assertEqual(entry.details["count"], 2)
+        self.assertIn("seqA", entry.details["sequence_names"])

@@ -6,6 +6,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.audit import log_action
+from core.models import AuditLog
+
 from .models import AnalysisTask
 from .serializers import (
     AnalysisTaskSerializer,
@@ -50,11 +53,12 @@ class AnalysisTaskResultView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
 
-def _dispatch(task_type, task_fn, **kwargs):
+def _dispatch(request, task_type, task_fn, **kwargs):
     """Create an ``AnalysisTask`` row and dispatch the Celery task.
 
     Returns ``(task, None)`` on success, or ``(None, response)`` describing the
-    503 when the broker is unreachable.
+    503 when the broker is unreachable. Emits a SUBMIT audit row on success so
+    "who ran what analysis" is answerable from the audit log.
     """
     task_record = AnalysisTask.objects.create(task_type=task_type)
     try:
@@ -68,6 +72,12 @@ def _dispatch(task_type, task_fn, **kwargs):
             {'detail': 'Task queue unavailable. Please retry later.'},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
+    log_action(
+        request=request,
+        action=AuditLog.Action.SUBMIT,
+        target=task_record,
+        details={'task_type': task_type},
+    )
     return task_record, None
 
 
@@ -80,6 +90,7 @@ class BlastTaskView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         task_record, err = _dispatch(
+            request,
             'BLAST',
             run_blast_task,
             sequence=serializer.validated_data['sequence'],
@@ -103,6 +114,7 @@ class MsaTaskView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         task_record, err = _dispatch(
+            request,
             'MSA',
             run_msa_task,
             sequence=serializer.validated_data['sequence'],
@@ -124,6 +136,7 @@ class PeptideCalcView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         task_record, err = _dispatch(
+            request,
             'PEPTIDE_CALC',
             run_peptide_calc_task,
             target_mass=serializer.validated_data['target_mass'],
@@ -172,6 +185,7 @@ class PrimerDesignView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         task_record, err = _dispatch(
+            request,
             'PRIMER_DESIGN',
             run_primer_design_task,
             sequence=serializer.validated_data['sequence'],
@@ -195,6 +209,7 @@ class AntibodyAnnotationView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         task_record, err = _dispatch(
+            request,
             'ANTIBODY_ANNOTATION',
             run_antibody_annotation_task,
             sequence=serializer.validated_data['sequence'],

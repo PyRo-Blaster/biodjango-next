@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status, generics
+from rest_framework import viewsets, permissions, pagination, status, generics
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -37,7 +37,14 @@ class RegisterView(generics.CreateAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class AuditLogPagination(pagination.PageNumberPagination):
+    page_size = 50
+    max_page_size = 200
+    page_size_query_param = 'page_size'
+
+
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.all()
+    queryset = AuditLog.objects.select_related('actor', 'content_type').all()
     serializer_class = AuditLogSerializer
     permission_classes = [permissions.IsAdminUser]
+    pagination_class = AuditLogPagination
