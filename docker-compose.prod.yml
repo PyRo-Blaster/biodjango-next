@@ -54,7 +54,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      # Liveness probe only: checks that gunicorn is accepting connections on
+      # port 8000 using the netcat already installed in the image. The previous
+      # probe cold-started a Python interpreter every 10s, costing a sustained
+      # ~9% CPU on a 2-vCPU host even when idle (see issue #3).
+      # TODO: switch to an HTTP probe of /api/health/ via curl once curl is
+      # added to the runtime image.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8000"]
       interval: 10s
       timeout: 5s
       retries: 5
