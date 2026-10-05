@@ -127,4 +127,4 @@
 | [feasibility_v2.6.md](feasibility_v2.6.md) | ✅ 完成 |
 | [tasks_v2.6.md](tasks_v2.6.md) | ✅ 完成 |
 | [checklist_v2.6.md](checklist_v2.6.md) | ✅ 完成 |
-| [DEPLOY.md](DEPLOY.md) | ✅ 完成 |
+| [DEPLOY.md](../DEPLOY.md) | ✅ 完成 |
